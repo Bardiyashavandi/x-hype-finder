@@ -33,11 +33,11 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project directory structure per plan.md: `src/{models,pipeline,agent,posting,notify,scheduler,cli,db}/`, `tests/{contract,integration,unit}/`, each with `__init__.py`
-- [ ] T002 Initialize Python 3.11+ project with `pyproject.toml` pinning `tweepy`, `anthropic`, `requests`, `numpy`, `scikit-learn`, `apscheduler`, `sqlalchemy`, `alembic`, `python-dotenv`, `pytest` (per plan.md Technical Context)
-- [ ] T003 [P] Configure `ruff`/`black` linting and formatting in `pyproject.toml`
-- [ ] T004 [P] Create `.env.example` documenting required env vars (`TWITTERAPI_IO_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, X OAuth 1.0a/2.0 credentials) with no real values, and confirm `.env` is in `.gitignore` (FR-021, Constitution V)
-- [ ] T005 [P] Configure `pytest` in `pyproject.toml`/`conftest.py` with a test-scoped SQLite DB fixture in `tests/conftest.py`
+- [X] T001 Create project directory structure per plan.md: `src/{models,pipeline,agent,posting,notify,scheduler,cli,db}/`, `tests/{contract,integration,unit}/`, each with `__init__.py`
+- [X] T002 Initialize Python 3.11+ project with `pyproject.toml` pinning `tweepy`, `anthropic`, `requests`, `numpy`, `scikit-learn`, `apscheduler`, `sqlalchemy`, `alembic`, `python-dotenv`, `pytest` (per plan.md Technical Context)
+- [X] T003 [P] Configure `ruff`/`black` linting and formatting in `pyproject.toml`
+- [X] T004 [P] Create `.env.example` documenting required env vars (`TWITTERAPI_IO_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, X OAuth 1.0a/2.0 credentials) with no real values, and confirm `.env` is in `.gitignore` (FR-021, Constitution V)
+- [X] T005 [P] Configure `pytest` in `pyproject.toml`/`conftest.py` with a test-scoped SQLite DB fixture in `tests/conftest.py`
 
 ---
 

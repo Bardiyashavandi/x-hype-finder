@@ -1,0 +1,47 @@
+[project]
+name = "x-hype-finder"
+version = "0.1.0"
+description = "Monitors tracked X topics/tickers, detects genuine activity spikes against each topic's own baseline, and delivers a ranked, evidence-backed digest."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "tweepy>=4.14,<5",
+    "anthropic>=0.40,<1",
+    "requests>=2.32,<3",
+    "numpy>=1.26,<2",
+    "scikit-learn>=1.5,<2",
+    "apscheduler>=3.10,<4",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.13,<2",
+    "python-dotenv>=1.0,<2",
+    "pytest>=8.0,<9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6,<1",
+    "black>=24.0,<25",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
