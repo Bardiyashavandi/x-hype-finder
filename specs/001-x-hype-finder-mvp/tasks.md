@@ -47,23 +47,23 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Implement SQLAlchemy engine/session management in `src/db/session.py`
-- [ ] T007 Scaffold Alembic migrations in `src/db/migrations/` (env.py, script template) wired to the engine from T006
-- [ ] T008 [P] Create `User` model in `src/models/user.py` (id, email, x_account_handle, created_at — data-model.md)
-- [ ] T009 [P] Create `Topic` model in `src/models/topic.py` (id, user_id, name, x_handles, status, first_tracked_at — data-model.md)
-- [ ] T010 [P] Create `TopicBaselineSnapshot` model in `src/models/topic_baseline_snapshot.py` (id, topic_id, window_date, filtered_post_count — data-model.md)
-- [ ] T011 [P] Create `Digest` model in `src/models/digest.py` (id, user_id, run_type, started_at, completed_at, status, notification_sent_at — data-model.md)
-- [ ] T012 [P] Create `DigestTopicResult` model in `src/models/digest_topic_result.py` (id, digest_id, topic_id, outcome, error_detail — data-model.md)
-- [ ] T013 [P] Create `SourcePost` model in `src/models/source_post.py` (id, topic_id, digest_topic_result_id, x_post_id, author_handle, text, posted_at, filter_outcome, theme_id, **is_example: bool**, — data-model.md; `is_example` flags the curated 3-5 posts shown by default per Theme, distinct from the full drill-down set — FR-008, FR-016; *added per /speckit-analyze finding I2*)
-- [ ] T014 [P] Create `Theme` model in `src/models/theme.py` (id, digest_topic_result_id, summary, rationale, confidence_score, is_spike, spike_ratio, cluster_post_count, rank — data-model.md)
-- [ ] T015 [P] Create `DraftPost` model in `src/models/draft_post.py` (id, theme_id, user_id, draft_text, confidence_score, status, created_at, published_at, publish_error — data-model.md)
-- [ ] T016 [P] Create `PostingMode` model in `src/models/posting_mode.py` (id, user_id unique, mode, confidence_threshold, validation_period_ends_at, kill_switch_engaged, last_post_published_at, updated_at — data-model.md)
-- [ ] T017 Generate initial Alembic migration covering all models from T008-T016 (depends on T008-T016)
-- [ ] T018 Implement a per-user-scoped query helper/base repository in `src/db/scoped.py` that enforces `user_id` filtering on every query (FR-015, Constitution Security & Privacy Constraints)
-- [ ] T019 [P] Implement structured logging configuration in `src/logging_config.py` (clear, per-topic error visibility per FR-002/FR-018)
-- [ ] T020 [P] Implement a retry-with-backoff decorator in `src/utils/retry.py` for transient fetch/processing errors (FR-018)
-- [ ] T021 [P] Implement env-var-only config loader in `src/config.py` that fails fast with a clear error if a required credential is missing, never accepting a hardcoded fallback (FR-021, Constitution V); also exposes the currently-selected Claude model name (`claude-sonnet-5` default) as a runtime-configurable setting consumed by T040/T056, per research.md §3/contracts/external-integrations.md
-- [ ] T022 [P] **NEW (finding C1)** Implement cumulative cost tracking in `src/utils/cost_tracker.py` that logs TwitterAPI.io read costs and Claude API token spend (input/output tokens × current pricing) against the fixed one-time $50 total budget, exposing a running-total query used by T059's week-3 reassessment checkpoint (Constitution VI, SC-012)
+- [X] T006 Implement SQLAlchemy engine/session management in `src/db/session.py`
+- [X] T007 Scaffold Alembic migrations in `src/db/migrations/` (env.py, script template) wired to the engine from T006
+- [X] T008 [P] Create `User` model in `src/models/user.py` (id, email, x_account_handle, created_at — data-model.md)
+- [X] T009 [P] Create `Topic` model in `src/models/topic.py` (id, user_id, name, x_handles, status, first_tracked_at — data-model.md)
+- [X] T010 [P] Create `TopicBaselineSnapshot` model in `src/models/topic_baseline_snapshot.py` (id, topic_id, window_date, filtered_post_count — data-model.md)
+- [X] T011 [P] Create `Digest` model in `src/models/digest.py` (id, user_id, run_type, started_at, completed_at, status, notification_sent_at — data-model.md)
+- [X] T012 [P] Create `DigestTopicResult` model in `src/models/digest_topic_result.py` (id, digest_id, topic_id, outcome, error_detail — data-model.md)
+- [X] T013 [P] Create `SourcePost` model in `src/models/source_post.py` (id, topic_id, digest_topic_result_id, x_post_id, author_handle, text, posted_at, filter_outcome, theme_id, **is_example: bool**, — data-model.md; `is_example` flags the curated 3-5 posts shown by default per Theme, distinct from the full drill-down set — FR-008, FR-016; *added per /speckit-analyze finding I2*)
+- [X] T014 [P] Create `Theme` model in `src/models/theme.py` (id, digest_topic_result_id, summary, rationale, confidence_score, is_spike, spike_ratio, cluster_post_count, rank — data-model.md)
+- [X] T015 [P] Create `DraftPost` model in `src/models/draft_post.py` (id, theme_id, user_id, draft_text, confidence_score, status, created_at, published_at, publish_error — data-model.md)
+- [X] T016 [P] Create `PostingMode` model in `src/models/posting_mode.py` (id, user_id unique, mode, confidence_threshold, validation_period_ends_at, kill_switch_engaged, last_post_published_at, updated_at — data-model.md)
+- [X] T017 Generate initial Alembic migration covering all models from T008-T016 (depends on T008-T016)
+- [X] T018 Implement a per-user-scoped query helper/base repository in `src/db/scoped.py` that enforces `user_id` filtering on every query (FR-015, Constitution Security & Privacy Constraints)
+- [X] T019 [P] Implement structured logging configuration in `src/logging_config.py` (clear, per-topic error visibility per FR-002/FR-018)
+- [X] T020 [P] Implement a retry-with-backoff decorator in `src/utils/retry.py` for transient fetch/processing errors (FR-018)
+- [X] T021 [P] Implement env-var-only config loader in `src/config.py` that fails fast with a clear error if a required credential is missing, never accepting a hardcoded fallback (FR-021, Constitution V); also exposes the currently-selected Claude model name (`claude-sonnet-5` default) as a runtime-configurable setting consumed by T040/T056, per research.md §3/contracts/external-integrations.md
+- [X] T022 [P] **NEW (finding C1)** Implement cumulative cost tracking in `src/utils/cost_tracker.py` that logs TwitterAPI.io read costs and Claude API token spend (input/output tokens × current pricing) against the fixed one-time $50 total budget, exposing a running-total query used by T059's week-3 reassessment checkpoint (Constitution VI, SC-012)
 
 **Checkpoint**: Foundation ready — user story implementation can now begin
 

@@ -217,6 +217,11 @@ __marimo__/
 # macOS
 .DS_Store
 
+# X Hype Finder local runtime data (SQLite DB, cost ledger — never committed)
+.data/
+*.db
+*.db-journal
+
 # Streamlit
 .streamlit/secrets.toml
 
