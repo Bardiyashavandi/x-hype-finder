@@ -264,6 +264,9 @@ each only ever sees their own data, credentials, and history.
 - **SC-010**: Two distinct users maintain fully separate topic lists, credentials, and
   history, with zero visibility into each other's data.
 - **SC-011**: At least 80% of digests are rated "worth reading" by users over a 3-week trial.
+  This is measured out-of-band via informal check-ins with the two pilot users, not an
+  in-product rating feature — consistent with the MVP's no-dashboard scope (Product Brief §13,
+  Assumptions below). *(Clarified per /speckit-analyze finding A1.)*
 - **SC-012**: Total spend across the validation period stays within the one-time $50 total
   budget.
 - **SC-013**: A user is notified within minutes of every digest run completing, without
