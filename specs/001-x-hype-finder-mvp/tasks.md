@@ -77,13 +77,13 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T023 [P] [US1] Unit test Filter Tier 1 rule scoring (account age, follower ratio, velocity, duplicate-text ratio, link ratio, spam patterns) in `tests/unit/test_filter_tier1.py`
-- [ ] T024 [P] [US1] Unit test Filter Tier 2 embedding coordinated-content escalation in `tests/unit/test_filter_tier2.py`
+- [X] T023 [P] [US1] Unit test Filter Tier 1 rule scoring (account age, follower ratio, velocity, duplicate-text ratio, link ratio, spam patterns) in `tests/unit/test_filter_tier1.py`
+- [X] T024 [P] [US1] Unit test Filter Tier 2 embedding coordinated-content escalation in `tests/unit/test_filter_tier2.py`
 - [ ] T025 [P] [US1] Unit test Detect baseline/spike math and 7-day observation gate in `tests/unit/test_detect.py`
 - [ ] T026 [P] [US1] Unit test Cluster near-duplicate similarity grouping in `tests/unit/test_cluster.py`
 - [ ] T027 [P] [US1] Unit test Rank descending-significance ordering in `tests/unit/test_rank.py`
-- [ ] T028 [P] [US1] Contract test TwitterAPI.io Fetch client (request shape, retry-then-error behavior) in `tests/contract/test_twitterapi_io.py`
-- [ ] T029 [P] [US1] Contract test Ollama embeddings client (`nomic-embed-text` via localhost:11434) in `tests/contract/test_ollama_embeddings.py`
+- [X] T028 [P] [US1] Contract test TwitterAPI.io Fetch client (request shape, retry-then-error behavior) in `tests/contract/test_twitterapi_io.py`
+- [X] T029 [P] [US1] Contract test Ollama embeddings client (`nomic-embed-text` via localhost:11434) in `tests/contract/test_ollama_embeddings.py`
 - [ ] T030 [P] [US1] Contract test Claude Summarize stage structured output (`summary`, `rationale`, `confidence_score`) in `tests/contract/test_claude_summarize.py`
 - [ ] T031 [P] [US1] Contract test Resend notification client in `tests/contract/test_resend.py`
 - [ ] T032 [P] [US1] **NEW (finding U1)** Construct and curate a labeled fixture set of 50 known bot/spam posts mixed with genuine posts in `tests/fixtures/labeled_bot_spam_posts.json`, used by T033's ≥90%-exclusion assertion (SC-002; quickstart.md Scenario 1 step 7)
@@ -91,10 +91,10 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Implementation for User Story 1
 
-- [ ] T034 [US1] Implement TwitterAPI.io Fetch client in `src/pipeline/fetch.py` — per-topic error record on persistent failure, never halting other topics (FR-002), using retry from T020; reports read costs to the cost tracker from T022
-- [ ] T035 [US1] Implement Filter Tier 1 rule scoring in `src/pipeline/filter.py` (clear-keep / clear-exclude / ambiguous per research.md §5)
-- [ ] T036 [US1] Implement Ollama embeddings client wrapper in `src/pipeline/embeddings.py` (fails fast with a clear local-setup error if Ollama is unreachable, per contracts/external-integrations.md)
-- [ ] T037 [US1] Implement Filter Tier 2 embedding-based coordinated-content check in `src/pipeline/filter.py`, escalated only for Tier 1 ambiguous posts (depends on T035, T036)
+- [X] T034 [US1] Implement TwitterAPI.io Fetch client in `src/pipeline/fetch.py` — per-topic error record on persistent failure, never halting other topics (FR-002), using retry from T020; reports read costs to the cost tracker from T022
+- [X] T035 [US1] Implement Filter Tier 1 rule scoring in `src/pipeline/filter.py` (clear-keep / clear-exclude / ambiguous per research.md §5)
+- [X] T036 [US1] Implement Ollama embeddings client wrapper in `src/pipeline/embeddings.py` (fails fast with a clear local-setup error if Ollama is unreachable, per contracts/external-integrations.md)
+- [X] T037 [US1] Implement Filter Tier 2 embedding-based coordinated-content check in `src/pipeline/filter.py`, escalated only for Tier 1 ambiguous posts (depends on T035, T036)
 - [ ] T038 [US1] Implement Detect baseline comparison and 7-day observation gate in `src/pipeline/detect.py` (`is_spike`, `spike_ratio` — FR-004, FR-005)
 - [ ] T039 [US1] Implement Cluster similarity grouping into Theme candidates in `src/pipeline/cluster.py` (depends on T036)
 - [ ] T040 [US1] Implement Claude Summarize client in `src/agent/summarize.py` — structured tool-call output grounded on spike_ratio/cluster_post_count/filter-survival-rate/account-diversity context (FR-007, research.md §3/§12); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
