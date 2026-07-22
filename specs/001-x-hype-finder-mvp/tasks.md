@@ -79,8 +79,8 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 - [X] T023 [P] [US1] Unit test Filter Tier 1 rule scoring (account age, follower ratio, velocity, duplicate-text ratio, link ratio, spam patterns) in `tests/unit/test_filter_tier1.py`
 - [X] T024 [P] [US1] Unit test Filter Tier 2 embedding coordinated-content escalation in `tests/unit/test_filter_tier2.py`
-- [ ] T025 [P] [US1] Unit test Detect baseline/spike math and 7-day observation gate in `tests/unit/test_detect.py`
-- [ ] T026 [P] [US1] Unit test Cluster near-duplicate similarity grouping in `tests/unit/test_cluster.py`
+- [X] T025 [P] [US1] Unit test Detect baseline/spike math and 7-day observation gate in `tests/unit/test_detect.py`
+- [X] T026 [P] [US1] Unit test Cluster near-duplicate similarity grouping in `tests/unit/test_cluster.py`
 - [ ] T027 [P] [US1] Unit test Rank descending-significance ordering in `tests/unit/test_rank.py`
 - [X] T028 [P] [US1] Contract test TwitterAPI.io Fetch client (request shape, retry-then-error behavior) in `tests/contract/test_twitterapi_io.py`
 - [X] T029 [P] [US1] Contract test Ollama embeddings client (`nomic-embed-text` via localhost:11434) in `tests/contract/test_ollama_embeddings.py`
@@ -95,8 +95,8 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 - [X] T035 [US1] Implement Filter Tier 1 rule scoring in `src/pipeline/filter.py` (clear-keep / clear-exclude / ambiguous per research.md §5)
 - [X] T036 [US1] Implement Ollama embeddings client wrapper in `src/pipeline/embeddings.py` (fails fast with a clear local-setup error if Ollama is unreachable, per contracts/external-integrations.md)
 - [X] T037 [US1] Implement Filter Tier 2 embedding-based coordinated-content check in `src/pipeline/filter.py`, escalated only for Tier 1 ambiguous posts (depends on T035, T036)
-- [ ] T038 [US1] Implement Detect baseline comparison and 7-day observation gate in `src/pipeline/detect.py` (`is_spike`, `spike_ratio` — FR-004, FR-005)
-- [ ] T039 [US1] Implement Cluster similarity grouping into Theme candidates in `src/pipeline/cluster.py` (depends on T036)
+- [X] T038 [US1] Implement Detect baseline comparison and 7-day observation gate in `src/pipeline/detect.py` (`is_spike`, `spike_ratio` — FR-004, FR-005)
+- [X] T039 [US1] Implement Cluster similarity grouping into Theme candidates in `src/pipeline/cluster.py` (depends on T036)
 - [ ] T040 [US1] Implement Claude Summarize client in `src/agent/summarize.py` — structured tool-call output grounded on spike_ratio/cluster_post_count/filter-survival-rate/account-diversity context (FR-007, research.md §3/§12); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
 - [ ] T041 [US1] Implement Rank ordering across a run's Themes in `src/pipeline/rank.py` (FR-008)
 - [ ] T042 [US1] Implement `TopicBaselineSnapshot` daily write plus **inline, per-run** `SourcePost` retention prune in `src/pipeline/baseline.py` (FR-020) — this task covers pruning executed immediately after each run writes its baseline snapshot; T070 (Polish) separately covers a standalone periodic sweep for rows this per-run prune could miss (e.g. from a run that failed before completing) — *distinction clarified per /speckit-analyze finding D1*
