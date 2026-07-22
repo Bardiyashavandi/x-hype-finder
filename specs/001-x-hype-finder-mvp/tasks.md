@@ -81,13 +81,13 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 - [X] T024 [P] [US1] Unit test Filter Tier 2 embedding coordinated-content escalation in `tests/unit/test_filter_tier2.py`
 - [X] T025 [P] [US1] Unit test Detect baseline/spike math and 7-day observation gate in `tests/unit/test_detect.py`
 - [X] T026 [P] [US1] Unit test Cluster near-duplicate similarity grouping in `tests/unit/test_cluster.py`
-- [ ] T027 [P] [US1] Unit test Rank descending-significance ordering in `tests/unit/test_rank.py`
+- [X] T027 [P] [US1] Unit test Rank descending-significance ordering in `tests/unit/test_rank.py`
 - [X] T028 [P] [US1] Contract test TwitterAPI.io Fetch client (request shape, retry-then-error behavior) in `tests/contract/test_twitterapi_io.py`
 - [X] T029 [P] [US1] Contract test Ollama embeddings client (`nomic-embed-text` via localhost:11434) in `tests/contract/test_ollama_embeddings.py`
-- [ ] T030 [P] [US1] Contract test Claude Summarize stage structured output (`summary`, `rationale`, `confidence_score`) in `tests/contract/test_claude_summarize.py`
-- [ ] T031 [P] [US1] Contract test Resend notification client in `tests/contract/test_resend.py`
-- [ ] T032 [P] [US1] **NEW (finding U1)** Construct and curate a labeled fixture set of 50 known bot/spam posts mixed with genuine posts in `tests/fixtures/labeled_bot_spam_posts.json`, used by T033's ≥90%-exclusion assertion (SC-002; quickstart.md Scenario 1 step 7)
-- [ ] T033 [US1] Integration test for User Story 1 acceptance scenarios (spike surfaced, control not false-positive, 7-day gate, near-duplicate clustering, ≥90% bot exclusion using the T032 fixture) in `tests/integration/test_digest_pipeline.py` (depends on T032)
+- [X] T030 [P] [US1] Contract test Claude Summarize stage structured output (`summary`, `rationale`, `confidence_score`) in `tests/contract/test_claude_summarize.py`
+- [X] T031 [P] [US1] Contract test Resend notification client in `tests/contract/test_resend.py`
+- [X] T032 [P] [US1] **NEW (finding U1)** Construct and curate a labeled fixture set of 50 known bot/spam posts mixed with genuine posts in `tests/fixtures/labeled_bot_spam_posts.json`, used by T033's ≥90%-exclusion assertion (SC-002; quickstart.md Scenario 1 step 7)
+- [X] T033 [US1] Integration test for User Story 1 acceptance scenarios (spike surfaced, control not false-positive, 7-day gate, near-duplicate clustering, ≥90% bot exclusion using the T032 fixture) in `tests/integration/test_digest_pipeline.py` (depends on T032)
 
 ### Implementation for User Story 1
 
@@ -97,14 +97,14 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 - [X] T037 [US1] Implement Filter Tier 2 embedding-based coordinated-content check in `src/pipeline/filter.py`, escalated only for Tier 1 ambiguous posts (depends on T035, T036)
 - [X] T038 [US1] Implement Detect baseline comparison and 7-day observation gate in `src/pipeline/detect.py` (`is_spike`, `spike_ratio` — FR-004, FR-005)
 - [X] T039 [US1] Implement Cluster similarity grouping into Theme candidates in `src/pipeline/cluster.py` (depends on T036)
-- [ ] T040 [US1] Implement Claude Summarize client in `src/agent/summarize.py` — structured tool-call output grounded on spike_ratio/cluster_post_count/filter-survival-rate/account-diversity context (FR-007, research.md §3/§12); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
-- [ ] T041 [US1] Implement Rank ordering across a run's Themes in `src/pipeline/rank.py` (FR-008)
-- [ ] T042 [US1] Implement `TopicBaselineSnapshot` daily write plus **inline, per-run** `SourcePost` retention prune in `src/pipeline/baseline.py` (FR-020) — this task covers pruning executed immediately after each run writes its baseline snapshot; T070 (Polish) separately covers a standalone periodic sweep for rows this per-run prune could miss (e.g. from a run that failed before completing) — *distinction clarified per /speckit-analyze finding D1*
-- [ ] T043 [US1] Implement the digest run orchestrator in `src/pipeline/orchestrator.py` wiring Fetch→Filter→Detect→Cluster→Summarize→Rank into `Digest`/`DigestTopicResult`/`Theme`/`SourcePost` writes, handling `no_significant_activity`/`all_filtered_as_noise`/`fetch_error`/`incomplete_rate_limited` outcomes explicitly per topic (FR-017; depends on T034-T042)
-- [ ] T044 [US1] Implement `topic add/remove/list` CLI commands in `src/cli/topic.py` (contracts/cli-commands.md; FR-001, SC-001)
-- [ ] T045 [US1] Implement `digest run` CLI command invoking the orchestrator in `src/cli/digest.py` (depends on T043)
-- [ ] T046 [US1] Implement Resend digest-completion notification in `src/notify/email.py`, sent when `Digest.status` transitions to `completed`, `partial`, **or `failed`** (extended per /speckit-analyze finding E2 — FR-018 requires a scheduled run's failure to be visible to the user before the next expected run; there is no dashboard, so this notification is the only channel), logged-not-blocking on send failure (FR-023)
-- [ ] T047 [US1] Wire the default daily (user-configurable) `APScheduler` cadence job invoking the same orchestrator in `src/scheduler/jobs.py` (FR-009 scheduled path; depends on T043)
+- [X] T040 [US1] Implement Claude Summarize client in `src/agent/summarize.py` — structured tool-call output grounded on spike_ratio/cluster_post_count/filter-survival-rate/account-diversity context (FR-007, research.md §3/§12); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
+- [X] T041 [US1] Implement Rank ordering across a run's Themes in `src/pipeline/rank.py` (FR-008)
+- [X] T042 [US1] Implement `TopicBaselineSnapshot` daily write plus **inline, per-run** `SourcePost` retention prune in `src/pipeline/baseline.py` (FR-020) — this task covers pruning executed immediately after each run writes its baseline snapshot; T070 (Polish) separately covers a standalone periodic sweep for rows this per-run prune could miss (e.g. from a run that failed before completing) — *distinction clarified per /speckit-analyze finding D1*
+- [X] T043 [US1] Implement the digest run orchestrator in `src/pipeline/orchestrator.py` wiring Fetch→Filter→Detect→Cluster→Summarize→Rank into `Digest`/`DigestTopicResult`/`Theme`/`SourcePost` writes, handling `no_significant_activity`/`all_filtered_as_noise`/`fetch_error`/`incomplete_rate_limited` outcomes explicitly per topic (FR-017; depends on T034-T042)
+- [X] T044 [US1] Implement `topic add/remove/list` CLI commands in `src/cli/topic.py` (contracts/cli-commands.md; FR-001, SC-001)
+- [X] T045 [US1] Implement `digest run` CLI command invoking the orchestrator in `src/cli/digest.py` (depends on T043)
+- [X] T046 [US1] Implement Resend digest-completion notification in `src/notify/email.py`, sent when `Digest.status` transitions to `completed`, `partial`, **or `failed`** (extended per /speckit-analyze finding E2 — FR-018 requires a scheduled run's failure to be visible to the user before the next expected run; there is no dashboard, so this notification is the only channel), logged-not-blocking on send failure (FR-023)
+- [X] T047 [US1] Wire the default daily (user-configurable) `APScheduler` cadence job invoking the same orchestrator in `src/scheduler/jobs.py` (FR-009 scheduled path; depends on T043)
 
 **Checkpoint**: User Story 1 is fully functional and independently testable
 
