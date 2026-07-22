@@ -72,11 +72,37 @@ def test_request_shape_forces_the_summarize_tool_and_includes_signals():
     assert kwargs["model"] == MODEL
     assert kwargs["tool_choice"] == {"type": "tool", "name": SUMMARIZE_TOOL_NAME}
     assert kwargs["tools"][0]["name"] == SUMMARIZE_TOOL_NAME
+    assert kwargs["tools"][0]["strict"] is True
     prompt = kwargs["messages"][0]["content"]
     assert "4.20x baseline" in prompt
     assert "41" in prompt
     assert "75%" in prompt
     assert "12" in prompt
+    assert "no XML tags" in prompt
+
+
+def test_confidence_score_calibration_guidance_is_present():
+    """Locks in a real observed miscalibration fix: weak-signal themes
+    (single post/author, no spike_ratio) were scoring 4-8 despite their own
+    rationale concluding 'not a genuine trend' — the model was hedging
+    toward a moderate score instead of the floor. Both the tool schema and
+    the prompt must anchor low-signal cases to 0-5 and state explicitly
+    that this isn't a hedge, so a future edit can't silently drop it."""
+    client = _client_with_response(_response())
+
+    summarize_theme(_input(), api_key=API_KEY, model=MODEL, client=client)
+
+    _, kwargs = client.messages.create.call_args
+    schema_description = kwargs["tools"][0]["input_schema"]["properties"]["confidence_score"][
+        "description"
+    ]
+    assert "0-5" in schema_description
+    assert "not a hedge" in schema_description
+    assert "STRENGTH OF EVIDENCE" in schema_description
+
+    prompt = kwargs["messages"][0]["content"]
+    assert "0-5" in prompt
+    assert "confidence in your reasoning" in prompt
 
 
 def test_successful_response_parses_into_summarize_result():
@@ -135,6 +161,39 @@ def test_missing_required_field_raises_summarize_error():
 
     with pytest.raises(SummarizeError):
         summarize_theme(_input(), api_key=API_KEY, model=MODEL, client=client)
+
+
+def test_leaked_confidence_score_parameter_is_recovered_not_discarded():
+    """Simulates the exact artifact observed twice in production: a stray
+    legacy-format `</rationale>\\n<parameter name="confidence_score">N`
+    fragment leaks into the rationale string, and confidence_score is
+    missing from tool_input entirely. The defensive fallback
+    (_recover_leaked_confidence_score) must recover a clean rationale plus
+    the intended score instead of raising SummarizeError and discarding the
+    whole theme."""
+    clean_rationale = (
+        "This looks like an isolated promotional post about a funding round, "
+        "not a genuine trend."
+    )
+    leaked_rationale = clean_rationale + '</rationale>\n<parameter name="confidence_score">8'
+    block = SimpleNamespace(
+        type="tool_use",
+        name=SUMMARIZE_TOOL_NAME,
+        input={
+            "summary": "A single post about a funding round.",
+            "rationale": leaked_rationale,
+            # confidence_score deliberately absent — leaked into rationale above,
+            # exactly as observed in production.
+        },
+    )
+    client = _client_with_response(_response(content=[block]))
+
+    result = summarize_theme(_input(), api_key=API_KEY, model=MODEL, client=client)
+
+    assert result.confidence_score == 8
+    assert result.rationale == clean_rationale
+    assert "<parameter" not in result.rationale
+    assert "</rationale>" not in result.rationale
 
 
 def test_persistent_connection_error_retries_then_raises_summarize_error():

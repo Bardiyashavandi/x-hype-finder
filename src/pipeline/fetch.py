@@ -9,6 +9,7 @@ the same run (FR-002). Reports read costs to the cost tracker (T022).
 from __future__ import annotations
 
 import enum
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -22,7 +23,23 @@ BASE_URL = "https://api.twitterapi.io"
 SEARCH_PATH = "/twitter/tweet/advanced_search"
 
 DEFAULT_LOOKBACK = timedelta(days=1)
-MAX_POSTS_PER_RUN = 200  # plan.md Scale/Scope: ~200 posts/topic/run
+
+# TEMPORARY: lowered from plan.md Scale/Scope's ~200 posts/topic/run while the
+# TwitterAPI.io account is on the free tier (0.2 QPS = max 1 request/5s) —
+# fetching 200 posts a page at a time at that pace can take several minutes
+# per topic. Bump this back up to ~200 once the account is on a paid tier
+# with a real QPS budget.
+MAX_POSTS_PER_RUN = 20
+
+# Minimum spacing between successive page requests to the same topic's
+# search, matching TwitterAPI.io's free-tier 0.2 QPS cap (max 1 request per
+# 5 seconds). Applied proactively between *successful* page fetches in
+# `fetch_topic_posts`'s pagination loop — without it, each page after the
+# first fires immediately and gets 429'd, relying entirely on `_fetch_page`'s
+# retry-after-failure backoff to recover instead of avoiding the 429 in the
+# first place. Raise/lower alongside `_fetch_page`'s retry `base_delay_seconds`
+# if the account's rate limit changes.
+INTER_PAGE_DELAY_SECONDS = 5.0
 
 _TWITTER_DATE_FORMAT = "%a %b %d %H:%M:%S %z %Y"  # e.g. "Tue Dec 10 07:00:30 +0000 2024"
 
@@ -116,9 +133,14 @@ def _parse_tweet(raw: dict) -> RawPost:
     )
 
 
+# base_delay_seconds=5.0 is tuned for TwitterAPI.io's free-tier rate limit
+# (0.2 QPS = max 1 request per 5 seconds) — retrying any faster just hits the
+# same limit again immediately. With the default backoff_factor=2.0 this
+# waits ~5s then ~10s between the 3 attempts. If the account is upgraded to a
+# paid tier with a higher QPS cap, this can come back down.
 @retry_with_backoff(
     max_attempts=3,
-    base_delay_seconds=0.2,
+    base_delay_seconds=5.0,
     exceptions=(requests.RequestException, FetchAPIError),
 )
 def _fetch_page(api_key: str, query: str, cursor: str, *, session: requests.Session) -> dict:
@@ -163,8 +185,17 @@ def fetch_topic_posts(
 
     posts: list[RawPost] = []
     cursor = ""
+    is_first_page = True
     try:
         while len(posts) < max_posts:
+            if not is_first_page:
+                # Pace successive page requests to the free-tier 0.2 QPS cap
+                # proactively, rather than firing immediately and relying on
+                # _fetch_page's retry-after-failure backoff to recover from
+                # the resulting 429.
+                time.sleep(INTER_PAGE_DELAY_SECONDS)
+            is_first_page = False
+
             page = _fetch_page(api_key, query, cursor, session=session)
             tweets = page.get("tweets", [])
             posts.extend(_parse_tweet(tweet) for tweet in tweets)

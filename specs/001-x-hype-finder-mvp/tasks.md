@@ -141,7 +141,7 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Implementation for User Story 3
 
-- [ ] T052 [US3] Implement `digest show <digest-id> [--topic <name>] [--full]` CLI command in `src/cli/digest.py` — default view shows the 3-5 `is_example`-flagged posts per Theme (T013); `--full` shows every `SourcePost` plus `filter_outcome`; renders `no_significant_activity`/`all_filtered_as_noise` explicitly rather than an empty entry (FR-016, FR-017)
+- [~] T052 [US3] **PARTIAL** — Implement `digest show <digest-id> [--topic <name>] [--full]` CLI command in `src/cli/digest.py` — default view shows the 3-5 `is_example`-flagged posts per Theme (T013); `--full` shows every `SourcePost` plus `filter_outcome`; renders `no_significant_activity`/`all_filtered_as_noise` explicitly rather than an empty entry (FR-016, FR-017). **Done so far**: a minimal `digest show <digest-id>` prints every Theme (summary, rationale, confidence, rank) plus its 3-5 example posts, ordered by rank, and lists any topics with no themes this run (outcome + error detail) — just enough to inspect US1's actual output. **Not yet done**: `--topic` scoping and `--full` drill-down into every underlying `SourcePost` + its `filter_outcome` trail — that's the rest of User Story 3, to be completed alongside T051's integration test
 
 **Checkpoint**: User Stories 1-3 all work independently
 

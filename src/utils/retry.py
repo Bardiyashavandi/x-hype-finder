@@ -26,7 +26,7 @@ def retry_with_backoff(
     backoff_factor: float = 2.0,
     jitter_seconds: float = 0.25,
     exceptions: tuple[type[BaseException], ...] = (Exception,),
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
 ) -> Callable[[Callable[..., R]], Callable[..., R]]:
     """Retry the decorated call up to `max_attempts` times on `exceptions`,
     waiting `base_delay_seconds * backoff_factor ** attempt` (+ small jitter,
@@ -38,6 +38,10 @@ def retry_with_backoff(
     def decorator(func: Callable[..., R]) -> Callable[..., R]:
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> R:
+            # Resolved on every call (not cached as a default parameter at
+            # decoration time) so tests can monkeypatch `time.sleep` globally
+            # even against a function decorated once at module-import time.
+            effective_sleep = sleep if sleep is not None else time.sleep
             last_exc: BaseException | None = None
             for attempt in range(max_attempts):
                 try:
@@ -63,7 +67,7 @@ def retry_with_backoff(
                         exc,
                         delay,
                     )
-                    sleep(delay)
+                    effective_sleep(delay)
             # Unreachable: the loop above always either returns or raises.
             raise last_exc  # pragma: no cover
 

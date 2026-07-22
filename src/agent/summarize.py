@@ -18,6 +18,7 @@ from T022.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import anthropic
@@ -31,6 +32,14 @@ _MAX_EXAMPLE_POSTS_IN_PROMPT = 20
 
 _TOOL_SCHEMA = {
     "name": SUMMARIZE_TOOL_NAME,
+    # Grammar-constrained generation — guarantees every required field is
+    # present with the declared type. Added after two production failures
+    # where confidence_score went missing entirely: a stray legacy-format
+    # `</rationale>\n<parameter name="confidence_score">N` artifact leaked
+    # into the rationale string instead of confidence_score landing in its
+    # own field. See `_recover_leaked_confidence_score` below for a fallback
+    # in case this pattern recurs anyway.
+    "strict": True,
     "description": (
         "Submit a plain-language summary, rationale, and confidence score for "
         "why this cluster of posts does or doesn't represent a genuinely "
@@ -53,9 +62,18 @@ _TOOL_SCHEMA = {
             "confidence_score": {
                 "type": "integer",
                 "description": (
-                    "0-100 confidence this is a genuine, noteworthy trend, derived "
-                    "from the provided spike_ratio/cluster_post_count/"
-                    "filter_survival_rate/account_diversity signals."
+                    "0-100 STRENGTH OF EVIDENCE that this is a genuine, noteworthy "
+                    "trend — not your confidence in your own analysis being "
+                    "correct. A low score is the CORRECT answer when signals are "
+                    "weak, not a hedge. Calibrate against the provided signals: "
+                    "cluster_post_count=1 with no spike_ratio and 1 distinct "
+                    "author -> 0-5. A handful of posts with weak/no spike signal "
+                    "or low author diversity -> 5-25. A moderate spike_ratio "
+                    "(roughly 3-5x baseline) with several distinct authors -> "
+                    "30-65. A strong spike_ratio (>5x), high cluster_post_count, "
+                    "and high account diversity -> 65-100. If your rationale "
+                    "concludes this is NOT a genuine trend, confidence_score "
+                    "MUST be 0-5 — do not output 6-15 as a polite minimum."
                 ),
             },
         },
@@ -100,6 +118,32 @@ class SummarizeError(RuntimeError):
     """
 
 
+# Observed twice in production: confidence_score missing from tool_input
+# entirely, with its intended value trapped as trailing text in another
+# string field via a stray legacy-format tool-call artifact, e.g.
+# `...not a trend.</rationale>\n<parameter name="confidence_score">5`.
+# `strict: True` on the tool schema (above) should prevent this at the
+# source; this is a defensive fallback in case it recurs anyway (e.g. after
+# a future model switch per T059) — recovers the value instead of discarding
+# the whole theme.
+_LEAKED_PARAMETER_PATTERN = re.compile(r'</\w+>\s*<parameter name="confidence_score">\s*(\d+)\s*$')
+
+
+def _recover_leaked_confidence_score(tool_input: dict) -> dict:
+    if "confidence_score" in tool_input:
+        return tool_input
+    for key, value in tool_input.items():
+        if not isinstance(value, str):
+            continue
+        match = _LEAKED_PARAMETER_PATTERN.search(value)
+        if match:
+            cleaned = dict(tool_input)
+            cleaned[key] = value[: match.start()].rstrip()
+            cleaned["confidence_score"] = match.group(1)
+            return cleaned
+    return tool_input
+
+
 def _build_prompt(data: SummarizeInput) -> str:
     examples = "\n".join(f"- {text}" for text in data.post_texts[:_MAX_EXAMPLE_POSTS_IN_PROMPT])
     spike_ratio_text = (
@@ -117,9 +161,16 @@ def _build_prompt(data: SummarizeInput) -> str:
         f"filter): {data.filter_survival_rate:.0%}\n"
         f"- distinct author count in this cluster: {data.account_diversity_count}\n\n"
         f"Posts in this cluster:\n{examples}\n\n"
-        f"Call {SUMMARIZE_TOOL_NAME} with a plain-language summary of what this "
-        "cluster is about, a rationale for why it is (or isn't) genuinely "
-        "trending, and a confidence_score (0-100)."
+        f"Call {SUMMARIZE_TOOL_NAME} with a plain-language summary, a rationale, "
+        "and a confidence_score.\n\n"
+        "IMPORTANT — confidence_score measures strength of trend evidence, not "
+        "confidence in your reasoning. A single post from a single author with "
+        "no spike_ratio is 0-5, not a moderate score. If your rationale says "
+        "this is isolated / promotional / not a genuine trend, the score MUST "
+        "be 0-5 — a low rationale conclusion paired with a moderate score is "
+        "exactly the miscalibration this instruction exists to prevent.\n\n"
+        "Write plain prose only in every field — no XML tags, no markup, no "
+        "`<parameter>`-style text anywhere in summary or rationale."
     )
 
 
@@ -160,7 +211,7 @@ def summarize_theme(
     if tool_use is None or tool_use.name != SUMMARIZE_TOOL_NAME:
         raise SummarizeError(f"Claude did not return the expected tool call: {response.content!r}")
 
-    tool_input = tool_use.input
+    tool_input = _recover_leaked_confidence_score(tool_use.input)
     try:
         summary = str(tool_input["summary"])
         rationale = str(tool_input["rationale"])

@@ -6,6 +6,7 @@ parsing into `RawPost`, and retry-then-error behavior on persistent failure —
 all against a mocked `requests.Session`, never a live network call.
 """
 
+import time
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
@@ -16,6 +17,17 @@ from src.pipeline import fetch as fetch_module
 from src.pipeline.fetch import FetchErrorKind, fetch_topic_posts
 
 API_KEY = "test-key"
+
+
+@pytest.fixture(autouse=True)
+def _fast_retry_sleep(monkeypatch):
+    """Skip real sleeping between retries. fetch.py's backoff now waits
+    ~5s/~10s to respect TwitterAPI.io's free-tier rate limit (0.2 QPS) — real
+    enough for production, far too slow for a test that exercises retry
+    exhaustion. `retry_with_backoff` resolves `time.sleep` fresh on every
+    call (src/utils/retry.py), so patching it globally here is sufficient
+    even though `_fetch_page` was decorated once at module-import time."""
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
 
 
 def _tweet(
