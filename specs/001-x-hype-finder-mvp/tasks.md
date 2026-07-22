@@ -47,23 +47,23 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Implement SQLAlchemy engine/session management in `src/db/session.py`
-- [ ] T007 Scaffold Alembic migrations in `src/db/migrations/` (env.py, script template) wired to the engine from T006
-- [ ] T008 [P] Create `User` model in `src/models/user.py` (id, email, x_account_handle, created_at — data-model.md)
-- [ ] T009 [P] Create `Topic` model in `src/models/topic.py` (id, user_id, name, x_handles, status, first_tracked_at — data-model.md)
-- [ ] T010 [P] Create `TopicBaselineSnapshot` model in `src/models/topic_baseline_snapshot.py` (id, topic_id, window_date, filtered_post_count — data-model.md)
-- [ ] T011 [P] Create `Digest` model in `src/models/digest.py` (id, user_id, run_type, started_at, completed_at, status, notification_sent_at — data-model.md)
-- [ ] T012 [P] Create `DigestTopicResult` model in `src/models/digest_topic_result.py` (id, digest_id, topic_id, outcome, error_detail — data-model.md)
-- [ ] T013 [P] Create `SourcePost` model in `src/models/source_post.py` (id, topic_id, digest_topic_result_id, x_post_id, author_handle, text, posted_at, filter_outcome, theme_id, **is_example: bool**, — data-model.md; `is_example` flags the curated 3-5 posts shown by default per Theme, distinct from the full drill-down set — FR-008, FR-016; *added per /speckit-analyze finding I2*)
-- [ ] T014 [P] Create `Theme` model in `src/models/theme.py` (id, digest_topic_result_id, summary, rationale, confidence_score, is_spike, spike_ratio, cluster_post_count, rank — data-model.md)
-- [ ] T015 [P] Create `DraftPost` model in `src/models/draft_post.py` (id, theme_id, user_id, draft_text, confidence_score, status, created_at, published_at, publish_error — data-model.md)
-- [ ] T016 [P] Create `PostingMode` model in `src/models/posting_mode.py` (id, user_id unique, mode, confidence_threshold, validation_period_ends_at, kill_switch_engaged, last_post_published_at, updated_at — data-model.md)
-- [ ] T017 Generate initial Alembic migration covering all models from T008-T016 (depends on T008-T016)
-- [ ] T018 Implement a per-user-scoped query helper/base repository in `src/db/scoped.py` that enforces `user_id` filtering on every query (FR-015, Constitution Security & Privacy Constraints)
-- [ ] T019 [P] Implement structured logging configuration in `src/logging_config.py` (clear, per-topic error visibility per FR-002/FR-018)
-- [ ] T020 [P] Implement a retry-with-backoff decorator in `src/utils/retry.py` for transient fetch/processing errors (FR-018)
-- [ ] T021 [P] Implement env-var-only config loader in `src/config.py` that fails fast with a clear error if a required credential is missing, never accepting a hardcoded fallback (FR-021, Constitution V); also exposes the currently-selected Claude model name (`claude-sonnet-5` default) as a runtime-configurable setting consumed by T040/T056, per research.md §3/contracts/external-integrations.md
-- [ ] T022 [P] **NEW (finding C1)** Implement cumulative cost tracking in `src/utils/cost_tracker.py` that logs TwitterAPI.io read costs and Claude API token spend (input/output tokens × current pricing) against the fixed one-time $50 total budget, exposing a running-total query used by T059's week-3 reassessment checkpoint (Constitution VI, SC-012)
+- [X] T006 Implement SQLAlchemy engine/session management in `src/db/session.py`
+- [X] T007 Scaffold Alembic migrations in `src/db/migrations/` (env.py, script template) wired to the engine from T006
+- [X] T008 [P] Create `User` model in `src/models/user.py` (id, email, x_account_handle, created_at — data-model.md)
+- [X] T009 [P] Create `Topic` model in `src/models/topic.py` (id, user_id, name, x_handles, status, first_tracked_at — data-model.md)
+- [X] T010 [P] Create `TopicBaselineSnapshot` model in `src/models/topic_baseline_snapshot.py` (id, topic_id, window_date, filtered_post_count — data-model.md)
+- [X] T011 [P] Create `Digest` model in `src/models/digest.py` (id, user_id, run_type, started_at, completed_at, status, notification_sent_at — data-model.md)
+- [X] T012 [P] Create `DigestTopicResult` model in `src/models/digest_topic_result.py` (id, digest_id, topic_id, outcome, error_detail — data-model.md)
+- [X] T013 [P] Create `SourcePost` model in `src/models/source_post.py` (id, topic_id, digest_topic_result_id, x_post_id, author_handle, text, posted_at, filter_outcome, theme_id, **is_example: bool**, — data-model.md; `is_example` flags the curated 3-5 posts shown by default per Theme, distinct from the full drill-down set — FR-008, FR-016; *added per /speckit-analyze finding I2*)
+- [X] T014 [P] Create `Theme` model in `src/models/theme.py` (id, digest_topic_result_id, summary, rationale, confidence_score, is_spike, spike_ratio, cluster_post_count, rank — data-model.md)
+- [X] T015 [P] Create `DraftPost` model in `src/models/draft_post.py` (id, theme_id, user_id, draft_text, confidence_score, status, created_at, published_at, publish_error — data-model.md)
+- [X] T016 [P] Create `PostingMode` model in `src/models/posting_mode.py` (id, user_id unique, mode, confidence_threshold, validation_period_ends_at, kill_switch_engaged, last_post_published_at, updated_at — data-model.md)
+- [X] T017 Generate initial Alembic migration covering all models from T008-T016 (depends on T008-T016)
+- [X] T018 Implement a per-user-scoped query helper/base repository in `src/db/scoped.py` that enforces `user_id` filtering on every query (FR-015, Constitution Security & Privacy Constraints)
+- [X] T019 [P] Implement structured logging configuration in `src/logging_config.py` (clear, per-topic error visibility per FR-002/FR-018)
+- [X] T020 [P] Implement a retry-with-backoff decorator in `src/utils/retry.py` for transient fetch/processing errors (FR-018)
+- [X] T021 [P] Implement env-var-only config loader in `src/config.py` that fails fast with a clear error if a required credential is missing, never accepting a hardcoded fallback (FR-021, Constitution V); also exposes the currently-selected Claude model name (`claude-sonnet-5` default) as a runtime-configurable setting consumed by T040/T056, per research.md §3/contracts/external-integrations.md
+- [X] T022 [P] **NEW (finding C1)** Implement cumulative cost tracking in `src/utils/cost_tracker.py` that logs TwitterAPI.io read costs and Claude API token spend (input/output tokens × current pricing) against the fixed one-time $50 total budget, exposing a running-total query used by T059's week-3 reassessment checkpoint (Constitution VI, SC-012)
 
 **Checkpoint**: Foundation ready — user story implementation can now begin
 
@@ -77,34 +77,34 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T023 [P] [US1] Unit test Filter Tier 1 rule scoring (account age, follower ratio, velocity, duplicate-text ratio, link ratio, spam patterns) in `tests/unit/test_filter_tier1.py`
-- [ ] T024 [P] [US1] Unit test Filter Tier 2 embedding coordinated-content escalation in `tests/unit/test_filter_tier2.py`
-- [ ] T025 [P] [US1] Unit test Detect baseline/spike math and 7-day observation gate in `tests/unit/test_detect.py`
-- [ ] T026 [P] [US1] Unit test Cluster near-duplicate similarity grouping in `tests/unit/test_cluster.py`
-- [ ] T027 [P] [US1] Unit test Rank descending-significance ordering in `tests/unit/test_rank.py`
-- [ ] T028 [P] [US1] Contract test TwitterAPI.io Fetch client (request shape, retry-then-error behavior) in `tests/contract/test_twitterapi_io.py`
-- [ ] T029 [P] [US1] Contract test Ollama embeddings client (`nomic-embed-text` via localhost:11434) in `tests/contract/test_ollama_embeddings.py`
-- [ ] T030 [P] [US1] Contract test Claude Summarize stage structured output (`summary`, `rationale`, `confidence_score`) in `tests/contract/test_claude_summarize.py`
-- [ ] T031 [P] [US1] Contract test Resend notification client in `tests/contract/test_resend.py`
-- [ ] T032 [P] [US1] **NEW (finding U1)** Construct and curate a labeled fixture set of 50 known bot/spam posts mixed with genuine posts in `tests/fixtures/labeled_bot_spam_posts.json`, used by T033's ≥90%-exclusion assertion (SC-002; quickstart.md Scenario 1 step 7)
-- [ ] T033 [US1] Integration test for User Story 1 acceptance scenarios (spike surfaced, control not false-positive, 7-day gate, near-duplicate clustering, ≥90% bot exclusion using the T032 fixture) in `tests/integration/test_digest_pipeline.py` (depends on T032)
+- [X] T023 [P] [US1] Unit test Filter Tier 1 rule scoring (account age, follower ratio, velocity, duplicate-text ratio, link ratio, spam patterns) in `tests/unit/test_filter_tier1.py`
+- [X] T024 [P] [US1] Unit test Filter Tier 2 embedding coordinated-content escalation in `tests/unit/test_filter_tier2.py`
+- [X] T025 [P] [US1] Unit test Detect baseline/spike math and 7-day observation gate in `tests/unit/test_detect.py`
+- [X] T026 [P] [US1] Unit test Cluster near-duplicate similarity grouping in `tests/unit/test_cluster.py`
+- [X] T027 [P] [US1] Unit test Rank descending-significance ordering in `tests/unit/test_rank.py`
+- [X] T028 [P] [US1] Contract test TwitterAPI.io Fetch client (request shape, retry-then-error behavior) in `tests/contract/test_twitterapi_io.py`
+- [X] T029 [P] [US1] Contract test Ollama embeddings client (`nomic-embed-text` via localhost:11434) in `tests/contract/test_ollama_embeddings.py`
+- [X] T030 [P] [US1] Contract test Claude Summarize stage structured output (`summary`, `rationale`, `confidence_score`) in `tests/contract/test_claude_summarize.py`
+- [X] T031 [P] [US1] Contract test Resend notification client in `tests/contract/test_resend.py`
+- [X] T032 [P] [US1] **NEW (finding U1)** Construct and curate a labeled fixture set of 50 known bot/spam posts mixed with genuine posts in `tests/fixtures/labeled_bot_spam_posts.json`, used by T033's ≥90%-exclusion assertion (SC-002; quickstart.md Scenario 1 step 7)
+- [X] T033 [US1] Integration test for User Story 1 acceptance scenarios (spike surfaced, control not false-positive, 7-day gate, near-duplicate clustering, ≥90% bot exclusion using the T032 fixture) in `tests/integration/test_digest_pipeline.py` (depends on T032)
 
 ### Implementation for User Story 1
 
-- [ ] T034 [US1] Implement TwitterAPI.io Fetch client in `src/pipeline/fetch.py` — per-topic error record on persistent failure, never halting other topics (FR-002), using retry from T020; reports read costs to the cost tracker from T022
-- [ ] T035 [US1] Implement Filter Tier 1 rule scoring in `src/pipeline/filter.py` (clear-keep / clear-exclude / ambiguous per research.md §5)
-- [ ] T036 [US1] Implement Ollama embeddings client wrapper in `src/pipeline/embeddings.py` (fails fast with a clear local-setup error if Ollama is unreachable, per contracts/external-integrations.md)
-- [ ] T037 [US1] Implement Filter Tier 2 embedding-based coordinated-content check in `src/pipeline/filter.py`, escalated only for Tier 1 ambiguous posts (depends on T035, T036)
-- [ ] T038 [US1] Implement Detect baseline comparison and 7-day observation gate in `src/pipeline/detect.py` (`is_spike`, `spike_ratio` — FR-004, FR-005)
-- [ ] T039 [US1] Implement Cluster similarity grouping into Theme candidates in `src/pipeline/cluster.py` (depends on T036)
-- [ ] T040 [US1] Implement Claude Summarize client in `src/agent/summarize.py` — structured tool-call output grounded on spike_ratio/cluster_post_count/filter-survival-rate/account-diversity context (FR-007, research.md §3/§12); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
-- [ ] T041 [US1] Implement Rank ordering across a run's Themes in `src/pipeline/rank.py` (FR-008)
-- [ ] T042 [US1] Implement `TopicBaselineSnapshot` daily write plus **inline, per-run** `SourcePost` retention prune in `src/pipeline/baseline.py` (FR-020) — this task covers pruning executed immediately after each run writes its baseline snapshot; T070 (Polish) separately covers a standalone periodic sweep for rows this per-run prune could miss (e.g. from a run that failed before completing) — *distinction clarified per /speckit-analyze finding D1*
-- [ ] T043 [US1] Implement the digest run orchestrator in `src/pipeline/orchestrator.py` wiring Fetch→Filter→Detect→Cluster→Summarize→Rank into `Digest`/`DigestTopicResult`/`Theme`/`SourcePost` writes, handling `no_significant_activity`/`all_filtered_as_noise`/`fetch_error`/`incomplete_rate_limited` outcomes explicitly per topic (FR-017; depends on T034-T042)
-- [ ] T044 [US1] Implement `topic add/remove/list` CLI commands in `src/cli/topic.py` (contracts/cli-commands.md; FR-001, SC-001)
-- [ ] T045 [US1] Implement `digest run` CLI command invoking the orchestrator in `src/cli/digest.py` (depends on T043)
-- [ ] T046 [US1] Implement Resend digest-completion notification in `src/notify/email.py`, sent when `Digest.status` transitions to `completed`, `partial`, **or `failed`** (extended per /speckit-analyze finding E2 — FR-018 requires a scheduled run's failure to be visible to the user before the next expected run; there is no dashboard, so this notification is the only channel), logged-not-blocking on send failure (FR-023)
-- [ ] T047 [US1] Wire the default daily (user-configurable) `APScheduler` cadence job invoking the same orchestrator in `src/scheduler/jobs.py` (FR-009 scheduled path; depends on T043)
+- [X] T034 [US1] Implement TwitterAPI.io Fetch client in `src/pipeline/fetch.py` — per-topic error record on persistent failure, never halting other topics (FR-002), using retry from T020; reports read costs to the cost tracker from T022
+- [X] T035 [US1] Implement Filter Tier 1 rule scoring in `src/pipeline/filter.py` (clear-keep / clear-exclude / ambiguous per research.md §5)
+- [X] T036 [US1] Implement Ollama embeddings client wrapper in `src/pipeline/embeddings.py` (fails fast with a clear local-setup error if Ollama is unreachable, per contracts/external-integrations.md)
+- [X] T037 [US1] Implement Filter Tier 2 embedding-based coordinated-content check in `src/pipeline/filter.py`, escalated only for Tier 1 ambiguous posts (depends on T035, T036)
+- [X] T038 [US1] Implement Detect baseline comparison and 7-day observation gate in `src/pipeline/detect.py` (`is_spike`, `spike_ratio` — FR-004, FR-005)
+- [X] T039 [US1] Implement Cluster similarity grouping into Theme candidates in `src/pipeline/cluster.py` (depends on T036)
+- [X] T040 [US1] Implement Claude Summarize client in `src/agent/summarize.py` — structured tool-call output grounded on spike_ratio/cluster_post_count/filter-survival-rate/account-diversity context (FR-007, research.md §3/§12); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
+- [X] T041 [US1] Implement Rank ordering across a run's Themes in `src/pipeline/rank.py` (FR-008)
+- [X] T042 [US1] Implement `TopicBaselineSnapshot` daily write plus **inline, per-run** `SourcePost` retention prune in `src/pipeline/baseline.py` (FR-020) — this task covers pruning executed immediately after each run writes its baseline snapshot; T070 (Polish) separately covers a standalone periodic sweep for rows this per-run prune could miss (e.g. from a run that failed before completing) — *distinction clarified per /speckit-analyze finding D1*
+- [X] T043 [US1] Implement the digest run orchestrator in `src/pipeline/orchestrator.py` wiring Fetch→Filter→Detect→Cluster→Summarize→Rank into `Digest`/`DigestTopicResult`/`Theme`/`SourcePost` writes, handling `no_significant_activity`/`all_filtered_as_noise`/`fetch_error`/`incomplete_rate_limited` outcomes explicitly per topic (FR-017; depends on T034-T042)
+- [X] T044 [US1] Implement `topic add/remove/list` CLI commands in `src/cli/topic.py` (contracts/cli-commands.md; FR-001, SC-001)
+- [X] T045 [US1] Implement `digest run` CLI command invoking the orchestrator in `src/cli/digest.py` (depends on T043)
+- [X] T046 [US1] Implement Resend digest-completion notification in `src/notify/email.py`, sent when `Digest.status` transitions to `completed`, `partial`, **or `failed`** (extended per /speckit-analyze finding E2 — FR-018 requires a scheduled run's failure to be visible to the user before the next expected run; there is no dashboard, so this notification is the only channel), logged-not-blocking on send failure (FR-023)
+- [X] T047 [US1] Wire the default daily (user-configurable) `APScheduler` cadence job invoking the same orchestrator in `src/scheduler/jobs.py` (FR-009 scheduled path; depends on T043)
 
 **Checkpoint**: User Story 1 is fully functional and independently testable
 
@@ -141,7 +141,7 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Implementation for User Story 3
 
-- [ ] T052 [US3] Implement `digest show <digest-id> [--topic <name>] [--full]` CLI command in `src/cli/digest.py` — default view shows the 3-5 `is_example`-flagged posts per Theme (T013); `--full` shows every `SourcePost` plus `filter_outcome`; renders `no_significant_activity`/`all_filtered_as_noise` explicitly rather than an empty entry (FR-016, FR-017)
+- [~] T052 [US3] **PARTIAL** — Implement `digest show <digest-id> [--topic <name>] [--full]` CLI command in `src/cli/digest.py` — default view shows the 3-5 `is_example`-flagged posts per Theme (T013); `--full` shows every `SourcePost` plus `filter_outcome`; renders `no_significant_activity`/`all_filtered_as_noise` explicitly rather than an empty entry (FR-016, FR-017). **Done so far**: a minimal `digest show <digest-id>` prints every Theme (summary, rationale, confidence, rank) plus its 3-5 example posts, ordered by rank, and lists any topics with no themes this run (outcome + error detail) — just enough to inspect US1's actual output. **Not yet done**: `--topic` scoping and `--full` drill-down into every underlying `SourcePost` + its `filter_outcome` trail — that's the rest of User Story 3, to be completed alongside T051's integration test
 
 **Checkpoint**: User Stories 1-3 all work independently
 

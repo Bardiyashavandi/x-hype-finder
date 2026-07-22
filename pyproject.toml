@@ -38,6 +38,9 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Alembic-generated revision scripts are tool output, not hand-authored code —
+# don't hold them to the same lint/format bar.
+extend-exclude = ["src/db/migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
@@ -45,3 +48,4 @@ select = ["E", "F", "I", "UP"]
 [tool.black]
 line-length = 100
 target-version = ["py311"]
+extend-exclude = "src/db/migrations/versions"
