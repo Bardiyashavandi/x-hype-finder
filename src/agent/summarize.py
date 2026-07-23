@@ -118,30 +118,35 @@ class SummarizeError(RuntimeError):
     """
 
 
-# Observed twice in production: confidence_score missing from tool_input
-# entirely, with its intended value trapped as trailing text in another
-# string field via a stray legacy-format tool-call artifact, e.g.
-# `...not a trend.</rationale>\n<parameter name="confidence_score">5`.
+# Observed in production, two variants: (1) confidence_score missing from
+# tool_input entirely, with its intended value trapped as trailing text in
+# another string field via a stray legacy-format tool-call artifact, e.g.
+# `...not a trend.</rationale>\n<parameter name="confidence_score">5`; and
+# (2) confidence_score present and correct in its own field, but the *same*
+# trailing artifact still gets appended onto another string field (e.g.
+# rationale) regardless, leaving it corrupted even though nothing was lost.
 # `strict: True` on the tool schema (above) should prevent this at the
 # source; this is a defensive fallback in case it recurs anyway (e.g. after
-# a future model switch per T059) — recovers the value instead of discarding
-# the whole theme.
+# a future model switch per T059) — always strips the artifact from every
+# string field, and only recovers confidence_score from it when that field
+# wasn't already supplied on its own.
 _LEAKED_PARAMETER_PATTERN = re.compile(r'</\w+>\s*<parameter name="confidence_score">\s*(\d+)\s*$')
 
 
 def _recover_leaked_confidence_score(tool_input: dict) -> dict:
-    if "confidence_score" in tool_input:
-        return tool_input
+    has_confidence_score = "confidence_score" in tool_input
+    cleaned = dict(tool_input)
     for key, value in tool_input.items():
         if not isinstance(value, str):
             continue
         match = _LEAKED_PARAMETER_PATTERN.search(value)
-        if match:
-            cleaned = dict(tool_input)
-            cleaned[key] = value[: match.start()].rstrip()
+        if match is None:
+            continue
+        cleaned[key] = value[: match.start()].rstrip()
+        if not has_confidence_score:
             cleaned["confidence_score"] = match.group(1)
-            return cleaned
-    return tool_input
+            has_confidence_score = True
+    return cleaned
 
 
 def _build_prompt(data: SummarizeInput) -> str:

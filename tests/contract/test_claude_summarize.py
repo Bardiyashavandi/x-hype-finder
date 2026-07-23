@@ -172,8 +172,7 @@ def test_leaked_confidence_score_parameter_is_recovered_not_discarded():
     the intended score instead of raising SummarizeError and discarding the
     whole theme."""
     clean_rationale = (
-        "This looks like an isolated promotional post about a funding round, "
-        "not a genuine trend."
+        "This looks like an isolated promotional post about a funding round, not a genuine trend."
     )
     leaked_rationale = clean_rationale + '</rationale>\n<parameter name="confidence_score">8'
     block = SimpleNamespace(
@@ -194,6 +193,41 @@ def test_leaked_confidence_score_parameter_is_recovered_not_discarded():
     assert result.rationale == clean_rationale
     assert "<parameter" not in result.rationale
     assert "</rationale>" not in result.rationale
+
+
+def test_leaked_parameter_artifact_is_stripped_even_when_confidence_score_already_present():
+    """A second production variant of the same artifact: confidence_score
+    IS present and correct in its own field, but Claude *also* appends the
+    same trailing `</parameter>\\n<parameter name="confidence_score">N`
+    fragment onto rationale regardless. The original fallback only scanned
+    for the leak when confidence_score was missing entirely, so this variant
+    left the artifact stuck in the persisted rationale (observed for real:
+    a `digest show --full` row rendered with the raw tag text in it). The
+    fix must strip the artifact from rationale unconditionally, without
+    touching the already-correct confidence_score."""
+    clean_rationale = (
+        "This cluster consists of just one post from one author, with no "
+        "evidence of a genuine trending theme — this is an isolated "
+        "single-author post."
+    )
+    leaked_rationale = clean_rationale + '</parameter>\n<parameter name="confidence_score">2'
+    block = SimpleNamespace(
+        type="tool_use",
+        name=SUMMARIZE_TOOL_NAME,
+        input={
+            "summary": "A single investor/promotional post.",
+            "rationale": leaked_rationale,
+            "confidence_score": 2,  # already present and correct
+        },
+    )
+    client = _client_with_response(_response(content=[block]))
+
+    result = summarize_theme(_input(), api_key=API_KEY, model=MODEL, client=client)
+
+    assert result.confidence_score == 2
+    assert result.rationale == clean_rationale
+    assert "<parameter" not in result.rationale
+    assert "</parameter>" not in result.rationale
 
 
 def test_persistent_connection_error_retries_then_raises_summarize_error():
