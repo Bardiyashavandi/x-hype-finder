@@ -1,4 +1,4 @@
-"""Digest run orchestrator (tasks.md T043, contracts/pipeline-stages.md,
+"""Digest run orchestrator (tasks.md T043/T050, contracts/pipeline-stages.md,
 FR-017).
 
 Wires Fetch → Filter → Detect → Cluster → Summarize → Rank into `Digest` /
@@ -15,6 +15,10 @@ Rank runs once, across every Theme produced for every topic in the run
 been processed. The digest-completion notification (FR-023) is sent from
 here so scheduled and on-demand runs (this is the same entry point both the
 CLI and the scheduler call) get identical behavior for free.
+
+Run duration is logged (not enforced — no run is aborted for running long)
+against the <5 minute on-demand single-topic budget (FR-009, SC-004), using
+`Digest.started_at`/`completed_at` which are already persisted either way.
 """
 
 from __future__ import annotations
@@ -50,6 +54,11 @@ _MAX_EXAMPLE_POSTS = 5
 _FAILURE_OUTCOMES = frozenset(
     {DigestTopicOutcome.FETCH_ERROR, DigestTopicOutcome.INCOMPLETE_RATE_LIMITED}
 )
+
+# On-demand single-topic budget (FR-009, SC-004) — logged against, not enforced
+# (a run is never aborted mid-flight for running long; this only makes the
+# budget's health visible after the fact, per tasks.md T050).
+ON_DEMAND_SINGLE_TOPIC_BUDGET_SECONDS = 300
 
 
 def run_digest(
@@ -95,6 +104,8 @@ def run_digest(
     digest.completed_at = datetime.now(UTC)
     session.commit()
 
+    _log_run_duration(log, digest, run_type, topic_count=len(topics))
+
     try:
         sent = send_digest_completion_notification(digest, user, api_key=config.resend_api_key)
         if sent:
@@ -103,6 +114,22 @@ def run_digest(
         log.exception("digest-completion notification raised unexpectedly (non-blocking)")
 
     return digest
+
+
+def _log_run_duration(log, digest: Digest, run_type: DigestRunType, *, topic_count: int) -> None:
+    """Log the run's wall-clock duration (`Digest.started_at`/`completed_at`
+    already capture it — no new field needed) and flag on-demand single-topic
+    runs that blew the <5 minute budget (FR-009, SC-004, tasks.md T050)."""
+    duration_seconds = (digest.completed_at - digest.started_at).total_seconds()
+    log.info("digest run completed in %.1fs (run_type=%s)", duration_seconds, run_type.value)
+
+    is_on_demand_single_topic = run_type == DigestRunType.ON_DEMAND and topic_count == 1
+    if is_on_demand_single_topic and duration_seconds > ON_DEMAND_SINGLE_TOPIC_BUDGET_SECONDS:
+        log.warning(
+            "on-demand single-topic run exceeded the %ss budget: took %.1fs",
+            ON_DEMAND_SINGLE_TOPIC_BUDGET_SECONDS,
+            duration_seconds,
+        )
 
 
 def _final_status(outcomes: list[DigestTopicOutcome]) -> DigestStatus:

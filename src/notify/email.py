@@ -51,11 +51,7 @@ def _build_body(digest: Digest) -> str:
     # exists, and the orchestrator never creates a DraftPost row, so this
     # only confirms the digest is ready to review, without implying a
     # drafts/posting feature exists.
-    ready_note = " Your topics have been checked — review the results."
-    # `digest show` (per-topic drill-down, User Story 3) isn't built yet
-    # either (tasks.md T052) — src/cli/digest.py only registers `run` so far
-    # — so this doesn't point at it. Check the logs for per-topic detail
-    # until that command lands.
+    ready_note = f" Run `digest show {digest.id}` to review the results."
     partial_note = (
         " One or more topics hit an error this run; other topics completed "
         "normally — check the logs for per-topic detail."

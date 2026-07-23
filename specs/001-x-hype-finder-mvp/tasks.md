@@ -118,12 +118,12 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T048 [P] [US2] Integration test that an on-demand single-topic run completes in under 5 minutes and matches scheduled-run output format/quality in `tests/integration/test_on_demand_digest.py`
+- [X] T048 [P] [US2] Integration test that an on-demand single-topic run completes in under 5 minutes and matches scheduled-run output format/quality in `tests/integration/test_on_demand_digest.py`
 
 ### Implementation for User Story 2
 
-- [ ] T049 [US2] Add `--topic <name>` single-topic scoping to the `digest run` CLI command in `src/cli/digest.py` (depends on T045)
-- [ ] T050 [US2] Add run-duration instrumentation/logging to the orchestrator to verify the <5 minute budget in `src/pipeline/orchestrator.py` (FR-009, SC-004)
+- [X] T049 [US2] Add `--topic <name>` single-topic scoping to the `digest run` CLI command in `src/cli/digest.py` (depends on T045)
+- [X] T050 [US2] Add run-duration instrumentation/logging to the orchestrator to verify the <5 minute budget in `src/pipeline/orchestrator.py` (FR-009, SC-004)
 
 **Checkpoint**: User Stories 1 AND 2 both work independently
 
@@ -137,11 +137,11 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T051 [P] [US3] Integration test full source drill-down (all N posts + `filter_outcome` trail) and the explicit `all_filtered_as_noise` state in `tests/integration/test_drilldown.py`
+- [X] T051 [P] [US3] Integration test full source drill-down (all N posts + `filter_outcome` trail) and the explicit `all_filtered_as_noise` state in `tests/integration/test_drilldown.py`
 
 ### Implementation for User Story 3
 
-- [~] T052 [US3] **PARTIAL** — Implement `digest show <digest-id> [--topic <name>] [--full]` CLI command in `src/cli/digest.py` — default view shows the 3-5 `is_example`-flagged posts per Theme (T013); `--full` shows every `SourcePost` plus `filter_outcome`; renders `no_significant_activity`/`all_filtered_as_noise` explicitly rather than an empty entry (FR-016, FR-017). **Done so far**: a minimal `digest show <digest-id>` prints every Theme (summary, rationale, confidence, rank) plus its 3-5 example posts, ordered by rank, and lists any topics with no themes this run (outcome + error detail) — just enough to inspect US1's actual output. **Not yet done**: `--topic` scoping and `--full` drill-down into every underlying `SourcePost` + its `filter_outcome` trail — that's the rest of User Story 3, to be completed alongside T051's integration test
+- [X] T052 [US3] Implement `digest show <digest-id> [--topic <name>] [--full]` CLI command in `src/cli/digest.py` — default view shows the 3-5 `is_example`-flagged posts per Theme (T013); `--full` shows every `SourcePost` plus `filter_outcome`, for both Theme-clustered and Filter-excluded posts; renders `no_significant_activity`/`all_filtered_as_noise`/`fetch_error`/`incomplete_rate_limited` explicitly rather than an empty entry (FR-016, FR-017). `--topic <name>` scopes rendering to a single topic, erroring clearly if the name doesn't match anything in the digest.
 
 **Checkpoint**: User Stories 1-3 all work independently
 
