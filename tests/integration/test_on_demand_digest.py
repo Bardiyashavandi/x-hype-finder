@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
+from src.agent.draft_post import DraftPostResult
 from src.agent.summarize import SummarizeInput, SummarizeResult
 from src.cli import digest as digest_cli
 from src.config import Config
@@ -117,6 +118,11 @@ def _hermetic_pipeline(monkeypatch):
         orchestrator_module,
         "send_digest_completion_notification",
         lambda digest, user, *, api_key: False,
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "generate_draft_post",
+        lambda data, *, api_key, model: DraftPostResult(draft_text=f"Draft: {data.theme_summary}"),
     )
 
 

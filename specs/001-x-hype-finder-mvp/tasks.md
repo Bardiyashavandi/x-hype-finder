@@ -155,21 +155,21 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T053 [P] [US4] Unit test `PostingMode` state-machine gating (validation-period check, bio-label check, threshold routing, kill switch, rolling 24h/5-post cap) in `tests/unit/test_posting_mode.py`
-- [ ] T054 [P] [US4] Contract test X posting API via `tweepy` (bio-label read, publish call, failure surfacing) in `tests/contract/test_x_posting.py`
-- [ ] T055 [US4] Integration test User Story 4 acceptance scenarios (manual-only hold, gated autonomous switch, threshold routing never silently discarding, jittered timing, publish-failure surfacing, no retroactive auto-publish after a mid-cycle switch) in `tests/integration/test_posting_autonomy.py`
+- [X] T053 [P] [US4] Unit test `PostingMode` state-machine gating (validation-period check, bio-label check, threshold routing, kill switch, rolling 24h/5-post cap) in `tests/unit/test_posting_mode.py`
+- [X] T054 [P] [US4] Contract test X posting API via `tweepy` (bio-label read, publish call, failure surfacing) in `tests/contract/test_x_posting.py`
+- [X] T055 [US4] Integration test User Story 4 acceptance scenarios (manual-only hold, gated autonomous switch, threshold routing never silently discarding, jittered timing, publish-failure surfacing, no retroactive auto-publish after a mid-cycle switch) in `tests/integration/test_posting_autonomy.py`
 
 ### Implementation for User Story 4
 
-- [ ] T056 [US4] Implement the Draft Post Claude client in `src/agent/draft_post.py` — `draft_text` generated from a high-signal Theme (contracts/pipeline-stages.md); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
-- [ ] T057 [US4] Wire `DraftPost` creation into the orchestrator, with `status` assigned exactly once per the `PostingMode` in effect at creation time — never changed retroactively by a later mode switch — in `src/pipeline/orchestrator.py` (depends on T043, T056)
-- [ ] T058 [US4] Implement the `PostingMode` state machine (manual/autonomous transitions, `validation_period_ends_at` gate, `kill_switch_engaged`) in `src/posting/mode.py` (FR-010, FR-011)
-- [ ] T059 [US4] **NEW (finding E1)** Implement the week-3 reassess-and-possibly-downgrade checkpoint in `src/posting/model_checkpoint.py`: at `validation_period_ends_at` (the same week-3 moment T058 gates the mode switch on), read cumulative spend from T022's cost tracker against the $5 Anthropic credit; if spend is holding up, keep the config value from T021 at `claude-sonnet-5` for T040/T056; if budget is tight, switch it to `claude-haiku-4-5-20251001` (research.md §3; depends on T022, T040, T056, T058)
-- [ ] T060 [US4] Implement the live X account bio "automated"-label check via `tweepy` in `src/posting/bio_check.py`, checked at the instant the mode switches to autonomous (FR-013)
-- [ ] T061 [US4] Implement jittered publish timing plus rolling-24h/5-post cap enforcement in `src/posting/rate_limit.py` (FR-014, FR-022)
-- [ ] T062 [US4] Implement the autonomous publish client in `src/posting/publish.py` — `published_auto` on success, `publish_failed` with `publish_error` surfaced (never silently dropped) on failure (FR-012, FR-019; depends on T058, T060, T061)
-- [ ] T063 [US4] Implement `posting mode show`, `posting mode set autonomous`, `posting mode set manual`, and `posting kill-switch on|off` CLI commands in `src/cli/posting.py` (contracts/cli-commands.md; depends on T058, T060)
-- [ ] T064 [US4] Implement `drafts list [--status <status>]` and `drafts mark-published <draft-id>` CLI commands in `src/cli/drafts.py` (contracts/cli-commands.md)
+- [X] T056 [US4] Implement the Draft Post Claude client in `src/agent/draft_post.py` — `draft_text` generated from a high-signal Theme (contracts/pipeline-stages.md); **model name is read from `src/config.py` (T021), never hardcoded — defaults to `claude-sonnet-5`, may switch to `claude-haiku-4-5-20251001` after T059's week-3 reassessment (finding E1)**; reports token spend to the cost tracker from T022
+- [X] T057 [US4] Wire `DraftPost` creation into the orchestrator, with `status` assigned exactly once per the `PostingMode` in effect at creation time — never changed retroactively by a later mode switch — in `src/pipeline/orchestrator.py` (depends on T043, T056)
+- [X] T058 [US4] Implement the `PostingMode` state machine (manual/autonomous transitions, `validation_period_ends_at` gate, `kill_switch_engaged`) in `src/posting/mode.py` (FR-010, FR-011)
+- [X] T059 [US4] **NEW (finding E1)** Implement the week-3 reassess-and-possibly-downgrade checkpoint in `src/posting/model_checkpoint.py`: at `validation_period_ends_at` (the same week-3 moment T058 gates the mode switch on), read cumulative spend from T022's cost tracker against the $5 Anthropic credit; if spend is holding up, keep the config value from T021 at `claude-sonnet-5` for T040/T056; if budget is tight, switch it to `claude-haiku-4-5-20251001` (research.md §3; depends on T022, T040, T056, T058)
+- [X] T060 [US4] Implement the live X account bio "automated"-label check via `tweepy` in `src/posting/bio_check.py`, checked at the instant the mode switches to autonomous (FR-013)
+- [X] T061 [US4] Implement jittered publish timing plus rolling-24h/5-post cap enforcement in `src/posting/rate_limit.py` (FR-014, FR-022)
+- [X] T062 [US4] Implement the autonomous publish client in `src/posting/publish.py` — `published_auto` on success, `publish_failed` with `publish_error` surfaced (never silently dropped) on failure (FR-012, FR-019; depends on T058, T060, T061)
+- [X] T063 [US4] Implement `posting mode show`, `posting mode set autonomous`, `posting mode set manual`, and `posting kill-switch on|off` CLI commands in `src/cli/posting.py` (contracts/cli-commands.md; depends on T058, T060)
+- [X] T064 [US4] Implement `drafts list [--status <status>]` and `drafts mark-published <draft-id>` CLI commands in `src/cli/drafts.py` (contracts/cli-commands.md)
 
 **Checkpoint**: User Stories 1-4 all work independently
 

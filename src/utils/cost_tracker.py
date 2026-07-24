@@ -96,6 +96,29 @@ def get_cumulative_spend() -> float:
     return total
 
 
+def get_cumulative_spend_by_source(source: str) -> float:
+    """Sum recorded cost entries for one `source` ("twitterapi_io" | "claude").
+
+    Used by T059's week-3 checkpoint, which reassesses against the $5
+    Anthropic credit specifically — a narrower figure than the $50 total
+    budget `get_cumulative_spend` tracks, since that total also includes
+    TwitterAPI.io reads (research.md §3).
+    """
+    path = _ledger_path()
+    if not path.exists():
+        return 0.0
+    total = 0.0
+    with path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            if entry["source"] == source:
+                total += entry["amount_usd"]
+    return total
+
+
 def get_budget_remaining() -> float:
     """USD remaining out of the fixed one-time $50 total (Constitution VI)."""
     return TOTAL_BUDGET_USD - get_cumulative_spend()

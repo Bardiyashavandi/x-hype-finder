@@ -1,9 +1,9 @@
-"""Digest run orchestrator (tasks.md T043/T050, contracts/pipeline-stages.md,
+"""Digest run orchestrator (tasks.md T043/T050/T057, contracts/pipeline-stages.md,
 FR-017).
 
-Wires Fetch → Filter → Detect → Cluster → Summarize → Rank into `Digest` /
-`DigestTopicResult` / `Theme` / `SourcePost` writes for one run, covering
-every `DigestTopicResult.outcome` explicitly per topic
+Wires Fetch → Filter → Detect → Cluster → Summarize → Rank → Draft Post into
+`Digest` / `DigestTopicResult` / `Theme` / `SourcePost` / `DraftPost` writes
+for one run, covering every `DigestTopicResult.outcome` explicitly per topic
 (`themes_present`/`no_significant_activity`/`all_filtered_as_noise`/
 `fetch_error`/`incomplete_rate_limited`) so a topic never silently vanishes
 from a digest (FR-017). One topic's failure — expected (a fetch error) or
@@ -16,6 +16,14 @@ been processed. The digest-completion notification (FR-023) is sent from
 here so scheduled and on-demand runs (this is the same entry point both the
 CLI and the scheduler call) get identical behavior for free.
 
+Every Theme produced also gets a `DraftPost` (T057) — the PRD's "every stage
+is built and ready from day one, including confidence-gated autonomous
+posting logic" — with `status` assigned exactly once at creation from the
+`PostingMode` in effect at that instant (data-model.md's state machine),
+never changed retroactively by a later mode switch (FR-010 edge case). The
+user's `PostingMode` row is lazily created on first use, anchoring
+`validation_period_ends_at` to this, their first digest run (data-model.md).
+
 Run duration is logged (not enforced — no run is aborted for running long)
 against the <5 minute on-demand single-topic budget (FR-009, SC-004), using
 `Digest.started_at`/`completed_at` which are already persisted either way.
@@ -25,14 +33,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import tweepy
 from sqlalchemy.orm import Session
 
+from src.agent.draft_post import DraftPostError, DraftPostInput, generate_draft_post
 from src.agent.summarize import SummarizeError, SummarizeInput, summarize_theme
 from src.config import Config
 from src.db.scoped import scoped_select
 from src.logging_config import get_logger
 from src.models.digest import Digest, DigestRunType, DigestStatus
 from src.models.digest_topic_result import DigestTopicOutcome, DigestTopicResult
+from src.models.draft_post import DraftPost
+from src.models.posting_mode import PostingMode
 from src.models.source_post import FilterOutcome, SourcePost
 from src.models.theme import Theme
 from src.models.topic import Topic
@@ -45,6 +57,9 @@ from src.pipeline.detect import DetectResult, detect_spike
 from src.pipeline.fetch import FetchErrorKind, RawPost, fetch_topic_posts
 from src.pipeline.filter import FilteredPost, filter_posts
 from src.pipeline.rank import rank_themes
+from src.posting.bio_check import build_x_client
+from src.posting.mode import get_or_create_posting_mode
+from src.posting.publish import decide_and_publish
 
 # 3-5 curated examples per Theme shown by default (FR-008); a smaller cluster
 # has every post flagged as an example instead.
@@ -87,6 +102,11 @@ def run_digest(
     session.add(digest)
     session.flush()  # populate digest.id (Python-side uuid4 defaults resolve at flush)
 
+    # T057: lazily created on first use — validation_period_ends_at anchors
+    # to this user's first-ever digest run (data-model.md § PostingMode).
+    posting_mode = get_or_create_posting_mode(session, user, now=digest.started_at)
+    x_client = build_x_client(config)
+
     all_themes: list[Theme] = []
     outcomes: list[DigestTopicOutcome] = []
 
@@ -94,7 +114,9 @@ def run_digest(
         topic_log = get_logger(
             __name__, user_id=str(user.id), topic=topic.name, digest_id=str(digest.id)
         )
-        dtr, themes = _process_topic(session, user, topic, digest, config, topic_log)
+        dtr, themes = _process_topic(
+            session, user, topic, digest, config, posting_mode, x_client, topic_log
+        )
         outcomes.append(dtr.outcome)
         all_themes.extend(themes)
 
@@ -149,10 +171,14 @@ def _process_topic(
     topic: Topic,
     digest: Digest,
     config: Config,
+    posting_mode: PostingMode,
+    x_client: tweepy.Client,
     log,
 ) -> tuple[DigestTopicResult, list[Theme]]:
     try:
-        return _run_topic_pipeline(session, user, topic, digest, config, log)
+        return _run_topic_pipeline(
+            session, user, topic, digest, config, posting_mode, x_client, log
+        )
     except Exception as exc:  # noqa: BLE001 - one topic's failure never halts the run (FR-002)
         log.exception("unexpected error processing topic %s", topic.name)
         dtr = DigestTopicResult(
@@ -171,6 +197,8 @@ def _run_topic_pipeline(
     topic: Topic,
     digest: Digest,
     config: Config,
+    posting_mode: PostingMode,
+    x_client: tweepy.Client,
     log,
 ) -> tuple[DigestTopicResult, list[Theme]]:
     fetch_result = fetch_topic_posts(topic.name, topic.x_handles, api_key=config.twitterapi_io_key)
@@ -254,6 +282,9 @@ def _run_topic_pipeline(
         filter_survival_rate=filter_survival_rate,
         source_post_by_x_post_id=source_post_by_x_post_id,
         session=session,
+        user=user,
+        posting_mode=posting_mode,
+        x_client=x_client,
         config=config,
         log=log,
     )
@@ -272,6 +303,9 @@ def _summarize_candidates(
     filter_survival_rate: float,
     source_post_by_x_post_id: dict[str, SourcePost],
     session: Session,
+    user: User,
+    posting_mode: PostingMode,
+    x_client: tweepy.Client,
     config: Config,
     log,
 ) -> list[Theme]:
@@ -316,7 +350,71 @@ def _summarize_candidates(
             sp.theme_id = theme.id
             sp.is_example = post.x_post_id in example_ids
 
+        example_texts = [post.text for post in candidate.posts if post.x_post_id in example_ids]
+        _create_draft_post(
+            session,
+            user=user,
+            topic=topic,
+            theme=theme,
+            example_post_texts=example_texts,
+            posting_mode=posting_mode,
+            x_client=x_client,
+            config=config,
+            log=log,
+        )
+
     return themes
+
+
+def _create_draft_post(
+    session: Session,
+    *,
+    user: User,
+    topic: Topic,
+    theme: Theme,
+    example_post_texts: list[str],
+    posting_mode: PostingMode,
+    x_client: tweepy.Client,
+    config: Config,
+    log,
+) -> DraftPost | None:
+    """Generate a DraftPost for `theme` and assign its `status` exactly once,
+    per the PostingMode in effect right now (T057, data-model.md). A Draft
+    Post failure only skips this theme's draft — the Theme itself still
+    appears in the digest either way (contracts/external-integrations.md § LLM)."""
+    try:
+        draft_result = generate_draft_post(
+            DraftPostInput(
+                topic_name=topic.name,
+                theme_summary=theme.summary,
+                theme_rationale=theme.rationale,
+                example_post_texts=example_post_texts,
+            ),
+            api_key=config.anthropic_api_key,
+            model=config.claude_model,
+        )
+    except DraftPostError as exc:
+        log.error("Draft Post failed for a theme in topic %s: %s", topic.name, exc)
+        return None
+
+    outcome = decide_and_publish(
+        session,
+        posting_mode,
+        confidence_score=theme.confidence_score,
+        draft_text=draft_result.draft_text,
+        x_client=x_client,
+    )
+    draft = DraftPost(
+        theme_id=theme.id,
+        user_id=user.id,
+        draft_text=draft_result.draft_text,
+        confidence_score=theme.confidence_score,
+        status=outcome.status,
+        published_at=outcome.published_at,
+        publish_error=outcome.publish_error,
+    )
+    session.add(draft)
+    return draft
 
 
 def _select_example_post_ids(candidate: ThemeCandidate) -> set[str]:
