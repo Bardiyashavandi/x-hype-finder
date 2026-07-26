@@ -29,6 +29,11 @@ _MAX_EXAMPLE_POSTS_IN_PROMPT = 5
 # X's post character limit — the draft must be publishable as-is, with no
 # truncation/formatting step between this stage and an autonomous publish.
 _MAX_POST_LENGTH = 280
+# Extra attempts (beyond the first) to let the model shorten an over-length
+# draft with concrete feedback about its own prior output, rather than
+# discarding the theme's draft after a single miss (research.md § Draft Post
+# length handling).
+_MAX_LENGTH_CORRECTION_ATTEMPTS = 2
 
 _TOOL_SCHEMA = {
     "name": DRAFT_POST_TOOL_NAME,
@@ -39,6 +44,7 @@ _TOOL_SCHEMA = {
         "properties": {
             "draft_text": {
                 "type": "string",
+                "maxLength": _MAX_POST_LENGTH,
                 "description": (
                     f"The post text itself, {_MAX_POST_LENGTH} characters or fewer, "
                     "written in a natural, human voice — no hashtag spam, no "
@@ -101,13 +107,15 @@ def _build_prompt(data: DraftPostInput) -> str:
 
 
 @retry_with_backoff(max_attempts=3, base_delay_seconds=0.2, exceptions=_RETRYABLE_ERRORS)
-def _call_claude(client: anthropic.Anthropic, model: str, prompt: str) -> anthropic.types.Message:
+def _call_claude(
+    client: anthropic.Anthropic, model: str, messages: list[dict]
+) -> anthropic.types.Message:
     return client.messages.create(
         model=model,
         max_tokens=512,
         tools=[_TOOL_SCHEMA],
         tool_choice={"type": "tool", "name": DRAFT_POST_TOOL_NAME},
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
     )
 
 
@@ -120,34 +128,71 @@ def generate_draft_post(
 ) -> DraftPostResult:
     """Generate `draft_text` for one Theme via Claude structured tool-call output.
 
+    An over-length draft_text isn't dropped after a single miss: it's fed
+    back to Claude as a tool_result error naming the exact overage, giving it
+    up to `_MAX_LENGTH_CORRECTION_ATTEMPTS` chances to shorten the same post
+    with real context, rather than hoping an independent resample happens to
+    fit (research.md § Draft Post length handling).
+
     Raises `DraftPostError` after retry is exhausted, or if Claude's response
     doesn't carry the expected tool call / a non-empty draft_text within the
-    X post length limit.
+    X post length limit after correction attempts are exhausted.
     """
     effective_client = client if client is not None else anthropic.Anthropic(api_key=api_key)
-    prompt = _build_prompt(data)
+    messages: list[dict] = [{"role": "user", "content": _build_prompt(data)}]
 
-    try:
-        response = _call_claude(effective_client, model, prompt)
-    except anthropic.APIError as exc:
-        raise DraftPostError(f"Claude Draft Post request failed: {exc}") from exc
+    for attempt in range(_MAX_LENGTH_CORRECTION_ATTEMPTS + 1):
+        try:
+            response = _call_claude(effective_client, model, messages)
+        except anthropic.APIError as exc:
+            raise DraftPostError(f"Claude Draft Post request failed: {exc}") from exc
 
-    record_claude_usage(model, response.usage.input_tokens, response.usage.output_tokens)
+        record_claude_usage(model, response.usage.input_tokens, response.usage.output_tokens)
 
-    tool_use = next((block for block in response.content if block.type == "tool_use"), None)
-    if tool_use is None or tool_use.name != DRAFT_POST_TOOL_NAME:
-        raise DraftPostError(f"Claude did not return the expected tool call: {response.content!r}")
+        tool_use = next((block for block in response.content if block.type == "tool_use"), None)
+        if tool_use is None or tool_use.name != DRAFT_POST_TOOL_NAME:
+            raise DraftPostError(
+                f"Claude did not return the expected tool call: {response.content!r}"
+            )
 
-    try:
-        draft_text = str(tool_use.input["draft_text"])
-    except (KeyError, TypeError) as exc:
-        raise DraftPostError(f"Malformed Draft Post tool input: {tool_use.input!r}") from exc
+        try:
+            draft_text = str(tool_use.input["draft_text"])
+        except (KeyError, TypeError) as exc:
+            raise DraftPostError(f"Malformed Draft Post tool input: {tool_use.input!r}") from exc
 
-    if not draft_text.strip():
-        raise DraftPostError("Claude returned an empty draft_text.")
-    if len(draft_text) > _MAX_POST_LENGTH:
-        raise DraftPostError(
-            f"draft_text exceeds the {_MAX_POST_LENGTH}-character X post limit: {len(draft_text)}"
+        if not draft_text.strip():
+            raise DraftPostError("Claude returned an empty draft_text.")
+
+        overflow = len(draft_text) - _MAX_POST_LENGTH
+        if overflow <= 0:
+            return DraftPostResult(draft_text=draft_text)
+
+        is_last_attempt = attempt == _MAX_LENGTH_CORRECTION_ATTEMPTS
+        if is_last_attempt:
+            raise DraftPostError(
+                f"draft_text still exceeds the {_MAX_POST_LENGTH}-character X post "
+                f"limit after {_MAX_LENGTH_CORRECTION_ATTEMPTS} correction attempt(s): "
+                f"{len(draft_text)}"
+            )
+
+        messages.append({"role": "assistant", "content": response.content})
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use.id,
+                        "is_error": True,
+                        "content": (
+                            f"That draft_text was {len(draft_text)} characters — "
+                            f"{overflow} over the {_MAX_POST_LENGTH} limit. Call "
+                            f"{DRAFT_POST_TOOL_NAME} again with the same point, "
+                            "shortened to fit. Cut words, don't truncate mid-sentence."
+                        ),
+                    }
+                ],
+            }
         )
 
-    return DraftPostResult(draft_text=draft_text)
+    raise AssertionError("unreachable — loop above always returns or raises")
