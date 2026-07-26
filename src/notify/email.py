@@ -47,11 +47,16 @@ def _build_body(digest: Digest) -> str:
             "fetch or processing error this run. Check the logs for per-topic "
             "detail, then try `digest run` again once resolved."
         )
-    # Posting/drafts (User Story 4) isn't built yet — no `drafts list` command
-    # exists, and the orchestrator never creates a DraftPost row, so this
-    # only confirms the digest is ready to review, without implying a
-    # drafts/posting feature exists.
-    ready_note = f" Run `digest show {digest.id}` to review the results."
+    # FR-023: during the manual-only period, also point the user at any
+    # drafts awaiting manual publishing (`drafts list --status held_manual`)
+    # so drafted content doesn't go unreviewed — this note is unconditional
+    # (cheap to print, harmless if there happen to be none this run) rather
+    # than querying DraftPost here, keeping the notification path simple and
+    # non-blocking regardless of posting state.
+    ready_note = (
+        f" Run `digest show {digest.id}` to review the results, and "
+        "`drafts list --status held_manual` for any drafts awaiting manual publishing."
+    )
     partial_note = (
         " One or more topics hit an error this run; other topics completed "
         "normally — check the logs for per-topic detail."

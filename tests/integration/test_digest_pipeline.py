@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from src.agent.draft_post import DraftPostResult
 from src.agent.summarize import SummarizeInput, SummarizeResult
 from src.config import Config
 from src.models.digest import DigestRunType, DigestStatus
@@ -169,6 +170,21 @@ def _stub_notification(monkeypatch):
         orchestrator_module,
         "send_digest_completion_notification",
         lambda digest, user, *, api_key: False,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_draft_post(monkeypatch):
+    """Never hit a real Claude API for Draft Post generation in these
+    orchestrator-wiring tests (covered separately by
+    tests/contract/test_claude_summarize.py-style coverage for Draft Post,
+    and tests/integration/test_posting_autonomy.py for US4's own wiring).
+    Every PostingMode created here defaults to manual, so this never reaches
+    an actual X publish call either."""
+    monkeypatch.setattr(
+        orchestrator_module,
+        "generate_draft_post",
+        lambda data, *, api_key, model: DraftPostResult(draft_text=f"Draft: {data.theme_summary}"),
     )
 
 
