@@ -43,10 +43,6 @@ def _config() -> Config:
         twitterapi_io_key="test-twitterapi-key",
         anthropic_api_key="test-anthropic-key",
         resend_api_key="test-resend-key",
-        x_api_key="test",
-        x_api_secret="test",
-        x_access_token="test",
-        x_access_token_secret="test",
         claude_model="claude-sonnet-5",
     )
 

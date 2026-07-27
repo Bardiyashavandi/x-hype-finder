@@ -13,13 +13,12 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sqlalchemy import select
-
-from src.config import load_config
+from src.cli._common import NoCurrentUserError, resolve_current_user
+from src.config import load_config, load_x_credentials_for_user
+from src.db.scoped import scoped_select
 from src.db.session import get_session
 from src.logging_config import configure_logging
 from src.models.posting_mode import PostingMode
-from src.models.user import User
 from src.posting.bio_check import build_x_client
 from src.posting.mode import (
     PostingModeError,
@@ -31,9 +30,7 @@ from src.posting.model_checkpoint import recommend_model_for_autonomous_phase
 
 
 def _posting_mode_for_user(session, user_id) -> PostingMode | None:
-    return session.execute(
-        select(PostingMode).where(PostingMode.user_id == user_id)
-    ).scalar_one_or_none()
+    return session.execute(scoped_select(PostingMode, user_id)).scalar_one_or_none()
 
 
 def _print_mode(posting_mode: PostingMode) -> None:
@@ -66,9 +63,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     with get_session() as session:
-        user = session.execute(select(User)).scalars().first()
-        if user is None:
-            print("No user configured — create a User row first.", file=sys.stderr)
+        try:
+            user = resolve_current_user(session)
+        except NoCurrentUserError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
         posting_mode = _posting_mode_for_user(session, user.id)
@@ -92,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "mode" and args.mode_command == "set" and args.value == "autonomous":
             config = load_config()
-            x_client = build_x_client(config)
+            x_client = build_x_client(load_x_credentials_for_user(user))
             try:
                 switch_to_autonomous(posting_mode, x_client=x_client)
             except PostingModeError as exc:

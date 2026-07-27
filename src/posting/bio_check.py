@@ -9,28 +9,34 @@ publish call in src/posting/publish.py) — kept in one place so credential
 wiring isn't duplicated per-module (mirrors src/agent/summarize.py's inline
 `anthropic.Anthropic(api_key=...)` construction, just centralized since
 multiple posting modules share it).
+
+`build_x_client` takes per-user `XCredentials` (src/config.py,
+`load_x_credentials_for_user`), never the shared `Config` — every user posts
+as their own X account, so building a client from anything shared across
+users would let one user's drafts publish through another user's account
+(FR-015, User Story 5).
 """
 
 from __future__ import annotations
 
 import tweepy
 
-from src.config import Config
+from src.config import XCredentials
 
 # FR-013: the bio must carry this label, checked case-insensitively as a
 # plain substring (e.g. "🤖 automated" or "[Automated account]" both count).
 AUTOMATED_LABEL = "automated"
 
 
-def build_x_client(config: Config) -> tweepy.Client:
-    """Construct a `tweepy.Client` from env-sourced OAuth 1.0a user-context
-    credentials (FR-021, Constitution V — never hardcoded). Construction
-    itself makes no network call."""
+def build_x_client(credentials: XCredentials) -> tweepy.Client:
+    """Construct a `tweepy.Client` from this one user's own env-sourced OAuth
+    1.0a user-context credentials (FR-021, Constitution V — never hardcoded;
+    FR-015 — never another user's). Construction itself makes no network call."""
     return tweepy.Client(
-        consumer_key=config.x_api_key,
-        consumer_secret=config.x_api_secret,
-        access_token=config.x_access_token,
-        access_token_secret=config.x_access_token_secret,
+        consumer_key=credentials.api_key,
+        consumer_secret=credentials.api_secret,
+        access_token=credentials.access_token,
+        access_token_secret=credentials.access_token_secret,
     )
 
 

@@ -1,10 +1,10 @@
 """`topic add/remove/list` CLI commands (tasks.md T044,
 contracts/cli-commands.md, FR-001, SC-001).
 
-The CLI process is invoked per-user (contracts/cli-commands.md) — full
-per-user credential/session namespacing lands in a later phase (US5, T067);
-for now this picks the single configured `User` row, matching the MVP's
-2-user, locally-run scope (plan.md Scale/Scope).
+The CLI process is invoked per-user (contracts/cli-commands.md) — which
+`User` row that is gets resolved via `resolve_current_user` (src/cli/_common.py,
+US5/T066), so this behaves correctly whether one or several users share the
+database.
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ import argparse
 import sys
 from datetime import UTC, datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.cli._common import NoCurrentUserError, resolve_current_user
+from src.db.scoped import scoped_select
 from src.db.session import get_session
 from src.logging_config import configure_logging
 from src.models.topic import Topic, TopicStatus
-from src.models.user import User
 
 
 class TopicCommandError(RuntimeError):
@@ -28,7 +28,7 @@ class TopicCommandError(RuntimeError):
 
 def _find_topic(session: Session, user_id, name: str, status: TopicStatus) -> Topic | None:
     return session.execute(
-        select(Topic).where(Topic.user_id == user_id, Topic.name == name, Topic.status == status)
+        scoped_select(Topic, user_id).where(Topic.name == name, Topic.status == status)
     ).scalar_one_or_none()
 
 
@@ -80,9 +80,7 @@ def remove_topic(session: Session, user_id, name: str) -> Topic:
 
 def list_topics(session: Session, user_id) -> list[Topic]:
     return (
-        session.execute(
-            select(Topic).where(Topic.user_id == user_id, Topic.status == TopicStatus.ACTIVE)
-        )
+        session.execute(scoped_select(Topic, user_id).where(Topic.status == TopicStatus.ACTIVE))
         .scalars()
         .all()
     )
@@ -114,9 +112,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     with get_session() as session:
-        user = session.execute(select(User)).scalars().first()
-        if user is None:
-            print("No user configured — create a User row before using the CLI.", file=sys.stderr)
+        try:
+            user = resolve_current_user(session)
+        except NoCurrentUserError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
         try:

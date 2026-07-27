@@ -14,6 +14,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 
 from src.config import Config
+from src.db.scoped import scoped_select
 from src.db.session import get_session
 from src.logging_config import get_logger
 from src.models.digest import DigestRunType
@@ -41,9 +42,7 @@ def run_scheduled_digest_for_all_users(config: Config) -> None:
             try:
                 topics = (
                     session.execute(
-                        select(Topic).where(
-                            Topic.user_id == user.id, Topic.status == TopicStatus.ACTIVE
-                        )
+                        scoped_select(Topic, user.id).where(Topic.status == TopicStatus.ACTIVE)
                     )
                     .scalars()
                     .all()

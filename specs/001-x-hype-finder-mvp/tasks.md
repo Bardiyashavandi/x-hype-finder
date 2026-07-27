@@ -183,12 +183,12 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 ### Tests for User Story 5 ⚠️
 
-- [ ] T065 [P] [US5] Integration test two-user isolation with overlapping topic names — cross-user data/credential access is blocked in `tests/integration/test_multi_user_isolation.py`
+- [X] T065 [P] [US5] Integration test two-user isolation with overlapping topic names — cross-user data/credential access is blocked in `tests/integration/test_multi_user_isolation.py`
 
 ### Implementation for User Story 5
 
-- [ ] T066 [US5] Audit and enforce `user_id` scoping across every repository/query call path built in prior phases in `src/db/scoped.py` and its callers (FR-015; depends on T018)
-- [ ] T067 [US5] Implement per-user credential loading (no cross-user credential access, per-user X OAuth/env-var namespacing) in `src/config.py` (FR-015, FR-021)
+- [X] T066 [US5] Audit and enforce `user_id` scoping across every repository/query call path built in prior phases in `src/db/scoped.py` and its callers (FR-015; depends on T018) — `scoped_select` (T018) was already correct; the audit found every CLI entry point (`topic`/`digest`/`posting`/`drafts`) picked the *first* `User` row in the DB (`select(User).scalars().first()`) rather than resolving which user the process runs as, which silently mixes up data the moment a second user exists. Fixed via `src/cli/_common.py`'s `resolve_current_user` (env-var-selected when >1 user exists, fails closed rather than guessing) and routed the remaining hand-rolled `select(Topic/Digest/PostingMode)...user_id==` queries in `src/cli/topic.py`, `src/cli/digest.py`, `src/cli/posting.py`, `src/scheduler/jobs.py`, `src/posting/mode.py` through `scoped_select` for consistency.
+- [X] T067 [US5] Implement per-user credential loading (no cross-user credential access, per-user X OAuth/env-var namespacing) in `src/config.py` (FR-015, FR-021) — the audit also found `run_digest`'s X client was built once from the single shared `Config` and reused for every user in the scheduler's multi-user loop (`src/scheduler/jobs.py`), meaning a second user's autonomous posting would have published through the first user's X credentials. Split `Config` (shared TwitterAPI.io/Anthropic/Resend service credentials) from new `XCredentials`/`load_x_credentials_for_user` (`src/config.py`), namespaced per user by `X_API_KEY__<HANDLE>` etc. off `User.x_account_handle`, with no shared/unnamespaced fallback — fails fast naming the exact missing var(s) instead. `src/posting/bio_check.py`'s `build_x_client` and its callers (`src/pipeline/orchestrator.py`, `src/cli/posting.py`) now take these per-user credentials.
 
 **Checkpoint**: All user stories independently functional
 

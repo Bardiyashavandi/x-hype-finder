@@ -13,13 +13,11 @@ import sys
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
-
+from src.cli._common import NoCurrentUserError, resolve_current_user
 from src.db.scoped import scoped_select
 from src.db.session import get_session
 from src.logging_config import configure_logging
 from src.models.draft_post import DraftPost, DraftPostStatus
-from src.models.user import User
 
 
 class DraftsCommandError(RuntimeError):
@@ -88,9 +86,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     with get_session() as session:
-        user = session.execute(select(User)).scalars().first()
-        if user is None:
-            print("No user configured — create a User row first.", file=sys.stderr)
+        try:
+            user = resolve_current_user(session)
+        except NoCurrentUserError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
         try:
