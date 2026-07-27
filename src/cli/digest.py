@@ -26,7 +26,9 @@ import uuid
 
 from sqlalchemy import select
 
+from src.cli._common import NoCurrentUserError, resolve_current_user
 from src.config import load_config
+from src.db.scoped import scoped_select
 from src.db.session import get_session
 from src.logging_config import configure_logging
 from src.models.digest import Digest, DigestRunType
@@ -34,15 +36,12 @@ from src.models.digest_topic_result import DigestTopicOutcome, DigestTopicResult
 from src.models.source_post import SourcePost
 from src.models.theme import Theme
 from src.models.topic import Topic, TopicStatus
-from src.models.user import User
 from src.pipeline.orchestrator import run_digest
 
 
 def _active_topics(session, user_id) -> list[Topic]:
     return (
-        session.execute(
-            select(Topic).where(Topic.user_id == user_id, Topic.status == TopicStatus.ACTIVE)
-        )
+        session.execute(scoped_select(Topic, user_id).where(Topic.status == TopicStatus.ACTIVE))
         .scalars()
         .all()
     )
@@ -50,15 +49,13 @@ def _active_topics(session, user_id) -> list[Topic]:
 
 def _active_topic_by_name(session, user_id, name: str) -> Topic | None:
     return session.execute(
-        select(Topic).where(
-            Topic.user_id == user_id, Topic.name == name, Topic.status == TopicStatus.ACTIVE
-        )
+        scoped_select(Topic, user_id).where(Topic.name == name, Topic.status == TopicStatus.ACTIVE)
     ).scalar_one_or_none()
 
 
 def _digest_for_user(session, user_id, digest_id: uuid.UUID) -> Digest | None:
     return session.execute(
-        select(Digest).where(Digest.id == digest_id, Digest.user_id == user_id)
+        scoped_select(Digest, user_id).where(Digest.id == digest_id)
     ).scalar_one_or_none()
 
 
@@ -213,9 +210,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     with get_session() as session:
-        user = session.execute(select(User)).scalars().first()
-        if user is None:
-            print("No user configured — create a User row first.", file=sys.stderr)
+        try:
+            user = resolve_current_user(session)
+        except NoCurrentUserError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
         if args.command == "run":

@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 import tweepy
 
-from src.config import Config
+from src.config import XCredentials
 from src.models.draft_post import DraftPostStatus
 from src.models.posting_mode import PostingMode, PostingModeValue
 from src.posting.bio_check import build_x_client, check_bio_has_automated_label
@@ -28,16 +28,12 @@ USER_ID = uuid.uuid4()
 NOW = datetime(2026, 7, 24, 12, 0, tzinfo=UTC)
 
 
-def _config() -> Config:
-    return Config(
-        twitterapi_io_key="test-twitterapi-key",
-        anthropic_api_key="test-anthropic-key",
-        resend_api_key="test-resend-key",
-        x_api_key="test-x-api-key",
-        x_api_secret="test-x-api-secret",
-        x_access_token="test-x-access-token",
-        x_access_token_secret="test-x-access-token-secret",
-        claude_model="claude-sonnet-5",
+def _x_credentials() -> XCredentials:
+    return XCredentials(
+        api_key="test-x-api-key",
+        api_secret="test-x-api-secret",
+        access_token="test-x-access-token",
+        access_token_secret="test-x-access-token-secret",
     )
 
 
@@ -71,7 +67,7 @@ def test_build_x_client_constructs_tweepy_client_from_env_sourced_config(monkeyp
 
     monkeypatch.setattr(tweepy, "Client", _FakeClient)
 
-    build_x_client(_config())
+    build_x_client(_x_credentials())
 
     assert captured == {
         "consumer_key": "test-x-api-key",

@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from src.agent.draft_post import DraftPostError, DraftPostInput, generate_draft_post
 from src.agent.summarize import SummarizeError, SummarizeInput, summarize_theme
-from src.config import Config
+from src.config import Config, load_x_credentials_for_user
 from src.db.scoped import scoped_select
 from src.logging_config import get_logger
 from src.models.digest import Digest, DigestRunType, DigestStatus
@@ -105,7 +105,10 @@ def run_digest(
     # T057: lazily created on first use — validation_period_ends_at anchors
     # to this user's first-ever digest run (data-model.md § PostingMode).
     posting_mode = get_or_create_posting_mode(session, user, now=digest.started_at)
-    x_client = build_x_client(config)
+    # This user's own X credentials, never another user's (FR-015) — the
+    # scheduler drives this same function once per user (src/scheduler/jobs.py),
+    # so this must be resolved fresh per `user`, not taken from the shared `config`.
+    x_client = build_x_client(load_x_credentials_for_user(user))
 
     all_themes: list[Theme] = []
     outcomes: list[DigestTopicOutcome] = []

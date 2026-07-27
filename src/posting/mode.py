@@ -17,9 +17,9 @@ import enum
 from datetime import UTC, datetime, timedelta
 
 import tweepy
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.db.scoped import scoped_select
 from src.models.posting_mode import PostingMode, PostingModeValue
 from src.models.user import User
 from src.posting.bio_check import check_bio_has_automated_label
@@ -55,9 +55,7 @@ def get_or_create_posting_mode(
     """Fetch this user's `PostingMode` row, creating it (manual, default
     threshold, `validation_period_ends_at` = `now` + 3 weeks) on first use —
     i.e. anchored to this user's first digest run, per data-model.md."""
-    existing = session.execute(
-        select(PostingMode).where(PostingMode.user_id == user.id)
-    ).scalar_one_or_none()
+    existing = session.execute(scoped_select(PostingMode, user.id)).scalar_one_or_none()
     if existing is not None:
         return existing
 
