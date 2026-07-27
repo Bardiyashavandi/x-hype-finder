@@ -198,11 +198,11 @@ Single project (per plan.md Structure Decision): `src/` and `tests/` at reposito
 
 **Purpose**: Improvements that span multiple user stories
 
-- [ ] T068 [P] Document CLI usage for every command from contracts/cli-commands.md in `docs/cli-usage.md`
-- [ ] T069 [P] Unit test the retry-with-backoff utility in `tests/unit/test_retry.py`
-- [ ] T070 [P] Implement a **separate, standalone periodic** `SourcePost` retention prune job (30-day drill-down window per FR-020) in `src/pipeline/baseline.py` — sweeps any rows older than the window that T042's inline per-run prune didn't already remove (e.g. from a run that failed before completing its prune step) — *distinction clarified per /speckit-analyze finding D1*
-- [ ] T071 Security review pass: confirm no credentials are committed anywhere in the repo and `.env` stays gitignored (Constitution V, FR-021)
-- [ ] T072 Run the full quickstart.md validation across all 5 scenarios end-to-end
+- [X] T068 [P] Document CLI usage for every command from contracts/cli-commands.md in `docs/cli-usage.md`
+- [X] T069 [P] Unit test the retry-with-backoff utility in `tests/unit/test_retry.py`
+- [X] T070 [P] Implement a **separate, standalone periodic** `SourcePost` retention prune job (30-day drill-down window per FR-020) in `src/pipeline/baseline.py` — sweeps any rows older than the window that T042's inline per-run prune didn't already remove (e.g. from a run that failed before completing its prune step) — *distinction clarified per /speckit-analyze finding D1* — implemented as `prune_stale_source_posts` (all-topics sweep, vs. T042's per-topic `prune_source_posts_for_topic`), wired into `src/scheduler/jobs.py` as its own `source_post_retention_sweep` job on an independent daily cadence alongside the digest run job. Tests: `tests/unit/test_baseline.py`, `tests/unit/test_scheduler_jobs.py`.
+- [X] T071 Security review pass: confirm no credentials are committed anywhere in the repo and `.env` stays gitignored (Constitution V, FR-021) — verified `.env` has never been committed in the full git history, `.gitignore` covers it, `.env.example` holds only empty placeholders, no `.db`/`.data/` runtime files are tracked, and a full-history + working-tree scan for common secret-key patterns (AWS/Anthropic/OpenAI/GitHub token shapes, hardcoded `api_key=`/`secret=`/`token=` assignments) found nothing outside obviously-fake test fixture strings.
+- [X] T072 Run the full quickstart.md validation across all 5 scenarios end-to-end — this environment has no live Ollama/TwitterAPI.io/Anthropic/Resend/X credentials, so "end-to-end against real services" wasn't possible; instead verified every scenario and edge case in quickstart.md maps to a passing automated test (Scenario 1 → `test_digest_pipeline.py`, Scenario 2 → `test_on_demand_digest.py`, Scenario 3 → `test_drilldown.py`, Scenario 4 → `test_posting_autonomy.py`/`test_posting_mode.py`, Scenario 5 → `test_multi_user_isolation.py`). This walkthrough surfaced one real, previously-untested path — `FetchErrorKind.RATE_LIMITED` → `DigestTopicOutcome.INCOMPLETE_RATE_LIMITED` was implemented (T043) but never exercised by a test — closed with a new test in `test_digest_pipeline.py`. Full suite: 200 passed.
 
 ---
 

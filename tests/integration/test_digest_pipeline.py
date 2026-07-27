@@ -353,6 +353,51 @@ def test_fetch_error_on_one_topic_never_halts_the_run_for_another(db_session, mo
     assert digest.status == DigestStatus.PARTIAL
 
 
+def test_rate_limited_fetch_marks_topic_incomplete_rate_limited_not_generic_fetch_error(
+    db_session, monkeypatch
+):
+    """Edge case from quickstart.md: rate limits hit mid-run must preserve
+    partial results and mark the affected topic `incomplete_rate_limited`
+    specifically (not the generic `fetch_error`), while other topics still
+    complete (FR-002, FR-017)."""
+    user = _seed_user(db_session)
+    healthy_topic = _seed_topic(db_session, user, "HEALTHY", first_tracked_days_ago=30)
+    limited_topic = _seed_topic(db_session, user, "LIMITED", first_tracked_days_ago=30)
+    _seed_baseline(db_session, healthy_topic, daily_count=10)
+
+    posts = [_clean_post(str(i), f"Normal post {i} about HEALTHY") for i in range(11)]
+    monkeypatch.setattr(
+        orchestrator_module,
+        "fetch_topic_posts",
+        _fake_fetch(
+            {
+                "HEALTHY": FetchResult(posts=posts, error=None),
+                "LIMITED": FetchResult(
+                    posts=None,
+                    error=FetchError(kind=FetchErrorKind.RATE_LIMITED, detail="429 rate limited"),
+                ),
+            }
+        ),
+    )
+    monkeypatch.setattr(orchestrator_module, "cluster_posts", _single_group_cluster)
+    monkeypatch.setattr(orchestrator_module, "summarize_theme", _fake_summarize_by_spike())
+
+    digest = run_digest(
+        db_session,
+        user,
+        [healthy_topic, limited_topic],
+        run_type=DigestRunType.ON_DEMAND,
+        config=_config(),
+    )
+
+    dtrs = {dtr.topic_id: dtr for dtr in _digest_topic_results(db_session, digest.id)}
+    assert dtrs[healthy_topic.id].outcome == DigestTopicOutcome.THEMES_PRESENT
+    assert dtrs[limited_topic.id].outcome == DigestTopicOutcome.INCOMPLETE_RATE_LIMITED
+    assert dtrs[limited_topic.id].error_detail == "429 rate limited"
+    # Partial results preserved: the healthy topic's Theme still exists.
+    assert digest.status == DigestStatus.PARTIAL
+
+
 def _digest_topic_results(session, digest_id):
     from src.models.digest_topic_result import DigestTopicResult
 
