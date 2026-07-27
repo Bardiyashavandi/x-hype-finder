@@ -1,15 +1,22 @@
-"""TopicBaselineSnapshot write + inline per-run SourcePost retention prune
-(tasks.md T042, FR-020, data-model.md § TopicBaselineSnapshot/SourcePost).
+"""TopicBaselineSnapshot write + SourcePost retention pruning (tasks.md
+T042/T070, FR-020, data-model.md § TopicBaselineSnapshot/SourcePost).
 
 `write_baseline_snapshot` records today's filtered-post count for a topic —
 the durable aggregate baseline history Detect reads (data-model.md); it
-outlives the raw `SourcePost` rows. `prune_source_posts_for_topic` is the
-per-run half of retention: it runs immediately after each run writes that
-topic's baseline snapshot, deleting `SourcePost` rows older than the
-drill-down window. T070 (Polish) separately covers a standalone periodic
-sweep for rows this per-run prune could miss (e.g. from a run that failed
-before completing its prune step) — distinction clarified per
-/speckit-analyze finding D1.
+outlives the raw `SourcePost` rows.
+
+Retention pruning has two halves, deliberately distinct (per /speckit-analyze
+finding D1):
+
+- `prune_source_posts_for_topic` (T042) — runs immediately after *this* run
+  writes *this* topic's baseline snapshot, scoped to one `topic_id`. Covers
+  the common case for free, as part of every successful run.
+- `prune_stale_source_posts` (T070) — a standalone, periodic sweep across
+  every topic, with no dependency on any particular run having completed.
+  Catches rows the per-run prune could miss — e.g. a run that failed or
+  crashed before reaching its own prune step, or historical data from before
+  this pruning existed — since data-model.md specifies retention as a
+  property of the table (FR-020), not of any one run.
 """
 
 from __future__ import annotations
@@ -87,4 +94,28 @@ def prune_source_posts_for_topic(
             SourcePost.posted_at < cutoff,
         )
     )
+    return result.rowcount or 0
+
+
+def prune_stale_source_posts(
+    session: Session,
+    *,
+    as_of: datetime | None = None,
+    retention_window: timedelta = RETENTION_WINDOW,
+) -> int:
+    """Standalone periodic sweep (tasks.md T070): delete every `SourcePost`
+    row older than the retention window, across every topic — not scoped to
+    a single run or topic.
+
+    Exists alongside `prune_source_posts_for_topic` (the inline per-run half)
+    to catch what that one run-scoped call can miss: a run that failed before
+    reaching its own prune step, a topic that hasn't run since, or data
+    predating this feature. Intended to be invoked on its own periodic
+    schedule (src/scheduler/jobs.py), independent of the digest run cadence.
+    Returns the number of rows deleted.
+    """
+    effective_as_of = as_of if as_of is not None else datetime.now(UTC)
+    cutoff = effective_as_of - retention_window
+
+    result = session.execute(delete(SourcePost).where(SourcePost.posted_at < cutoff))
     return result.rowcount or 0
