@@ -27,9 +27,9 @@ confidence score, and example posts — while the control topic does not falsely
 **Acceptance Scenarios**:
 
 1. **Given** a topic with 7+ days of baseline history and current filtered activity at or
-   above 3x its baseline, **When** a digest run executes, **Then** that topic appears in the
-   digest with a plain-language summary, a rationale, a confidence score, and 3–5 example
-   posts.
+   above its own `baseline mean + k * effective standard deviation` threshold (FR-004),
+   **When** a digest run executes, **Then** that topic appears in the digest with a
+   plain-language summary, a rationale, a confidence score, and 3–5 example posts.
 2. **Given** a topic with normal, non-spiking activity, **When** a digest run executes,
    **Then** that topic does not appear as a false-positive spike.
 3. **Given** a topic within its first 7 days of being tracked, **When** a digest run
@@ -171,7 +171,13 @@ each only ever sees their own data, credentials, and history.
   and escalating ambiguous cases to a deeper judgment check.
 - **FR-004**: System MUST compare each topic's filtered current activity to that topic's own
   filtered historical baseline and flag the topic as spiking when activity reaches at least
-  3x its baseline.
+  `baseline mean + k * effective standard deviation` (k = 2.5), where the effective standard
+  deviation is the larger of the topic's own trailing-window stdev and a Poisson noise floor
+  (`sqrt(baseline mean)`). A single fixed ratio (e.g. a flat 3x) is miscalibrated across
+  volume regimes — count-data variance scales with its mean, so a flat ratio is too loose
+  for low-volume topics (ordinary noise clears it) and too tight for high-volume ones (a
+  real trend may never reach it); scaling the threshold to each topic's own variance fixes
+  both failure modes at once.
 - **FR-005**: System MUST NOT flag a newly tracked topic as spiking during its first 7 days
   of tracked history, regardless of activity level.
 - **FR-006**: System MUST group filtered, related posts on a topic into thematic clusters
@@ -284,8 +290,10 @@ each only ever sees their own data, credentials, and history.
   is a parameter tuned during implementation rather than fixed at the specification level.
 - The MVP serves exactly two known users (the builder and their mentor); broader public
   signup and onboarding are out of scope.
-- The 3x-baseline spike threshold and 7-day new-topic observation period are treated as
-  fixed MVP behavior, per the source product requirements.
+- The variance-aware spike threshold (`baseline mean + k * effective standard deviation`,
+  k = 2.5) and 7-day new-topic observation period are treated as fixed MVP behavior, per the
+  source product requirements. The threshold's `k` value is a starting point pending
+  calibration against real topic history, per FR-004.
 - The autonomous-posting cap (5 posts/24h) and kill-switch mechanism satisfy the
   "governance guardrails" need without further specification; exact cap tuning may be
   revisited post-MVP based on real usage.

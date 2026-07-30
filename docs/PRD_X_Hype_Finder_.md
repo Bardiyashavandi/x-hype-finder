@@ -66,13 +66,24 @@ Topics → Fetch → Filter → Detect → Cluster → Summarize → Rank → Di
 | 1 | Topic Configuration | P0 | Add, remove, or list tracked topics and optional X handles; persists between runs | A topic added now appears in the very next run, with no code change or redeploy |
 | 2 | Data Fetching | P0 | Retrieve recent posts for each tracked topic within a defined time window | Each run returns posts for every tracked topic, or logs a clear fetch error without halting other topics |
 | 3 | Bot/Noise Filtering | P0 | Remove low-quality, bot-like, or coordinated content using cheap rule-based checks first, then a deeper LLM check on ambiguous cases; runs before Spike Detection | ≥ 90% of a labeled test set of 50 known bot/spam posts are correctly excluded |
-| 4 | Spike Detection | P0 | Compare filtered current activity to a topic's own filtered historical baseline; new topics get a 7-day observation period with no spike flag | A topic with 7+ days of history and activity ≥ 3x its baseline is flagged; a topic in its observation period never triggers a flag |
+| 4 | Spike Detection | P0 | Compare filtered current activity to a topic's own filtered historical baseline; new topics get a 7-day observation period with no spike flag | A topic with 7+ days of history is flagged when its current activity reaches at least `baseline mean + k * effective standard deviation` (k = 2.5, effective stdev floored at the Poisson noise level, `sqrt(mean)`, so quiet and busy topics are held to a threshold scaled to their own normal variance rather than one fixed ratio); a topic in its observation period never triggers a flag |
 | 5 | Thematic Clustering | P0 | Group filtered, related posts into themes instead of a flat list | Given 50+ filtered posts on one topic, near-duplicate posts are grouped into the same theme, not shown separately |
 | 6 | Explained, Scored Summaries | P0 | Generate a plain-language summary, a rationale, and a confidence score per theme | Every theme in a digest includes all three fields, in a structured format |
 | 7 | Ranked Digest Delivery | P0 | Rank themes by strength and deliver a digest with summary, rationale, confidence score, and 3–5 example posts per entry | Digest entries appear in descending order of significance; full source data is available on request, not shown by default |
 | 8 | Scheduling & On-Demand Trigger | P0 | Run automatically on a schedule, or immediately on manual request | A scheduled run fires without manual action; a manual trigger completes within minutes |
 | 9 | Posting (Manual-First, Autonomous-Ready) | P0 | Build the full confidence-gated auto-posting logic, but gate it behind a mode switch: during weeks 1–3, every draft is held for manual publishing regardless of confidence; after week 3, the system switches to autonomous — posting automatically above the threshold, holding for review below it. Before autonomous posting is ever enabled, the X account's bio must carry a visible "automated" label. Once autonomous, posts go out on a jittered/varied schedule rather than a perfectly fixed cadence, since a robotic fixed cadence is a known suspension trigger | During weeks 1–3, zero posts go out without manual action, even high-confidence ones; after the switch, drafts at or above the threshold post automatically and none are silently discarded either way. Autonomous posting is never enabled while the account bio lacks a visible "automated" label — verified by checking the live bio text before the mode switch is allowed to flip. Post timing under autonomous mode is measurably jittered (varying intervals between posts), never a fixed cadence — verified by inspecting the timestamp gaps across a sample of autonomous posts |
 | 10 | Multi-User-Ready Data Model | P0 | Store each user's topics, credentials, and history separately | Two users can each configure and use the tool with zero visibility into each other's data |
+
+> **Note on Feature 4's threshold (updated post-MVP-launch):** the original spec used a
+> flat "≥ 3x baseline" ratio for every topic. For count data, variance scales with the
+> mean (a Poisson-like property), so a fixed ratio is miscalibrated across volume
+> regimes — too loose for low-volume topics (ordinary day-to-day noise clears 3x on
+> its own) and too tight for high-volume ones (a real trend may never reach 3x). The
+> threshold now scales per topic: flag when current activity reaches `baseline mean +
+> k * effective stdev`, with the effective stdev floored at `sqrt(mean)` when a topic's
+> own history is too flat to have real variance. This keeps the check just as
+> deterministic and cheap to compute, using the same 7-day baseline history already
+> collected — no new data or dependencies required.
 
 ## 7. Non-Functional Requirements
 
