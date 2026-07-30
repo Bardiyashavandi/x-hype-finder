@@ -123,7 +123,30 @@ python -m src.cli.posting kill-switch on
 # Manually-held drafts (the default during the 3-week validation period)
 python -m src.cli.drafts list --status held_manual
 python -m src.cli.drafts mark-published <draft-id>
+
+# Scheduler (long-lived process — runs scheduled digests + retention sweep for every user)
+python -m src.cli.scheduler run
 ```
+
+### Running the scheduler
+
+`digest run` above is on-demand and one-shot. To get the automatic, scheduled digest
+cadence (FR-009) plus the periodic `SourcePost` retention sweep (FR-020) running in the
+background, start the scheduler as its own long-lived process:
+
+```sh
+python -m src.cli.scheduler run
+```
+
+This blocks the process and runs two jobs on independent interval timers (default: every
+24h) until you stop it with Ctrl+C, which shuts the scheduler down gracefully:
+
+- **Scheduled digest run** — a `run_type = scheduled` Digest for every user's active
+  topics, via the same orchestrator path `digest run` uses.
+- **SourcePost retention sweep** — deletes `SourcePost` rows older than the 30-day
+  retention window, across all users/topics.
+
+See [`docs/cli-usage.md`](docs/cli-usage.md#scheduler) for cadence flags and more detail.
 
 ## Current Status
 

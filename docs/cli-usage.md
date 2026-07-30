@@ -3,14 +3,15 @@
 **Feature**: 001-x-hype-finder-mvp (tasks.md T068, contracts/cli-commands.md)
 
 No web/GUI dashboard exists in this MVP (Product Brief §13) — the CLI is the entire
-user-facing interface. There are four command groups: `topic`, `digest`, `posting`,
-`drafts`. Each is invoked as a Python module:
+user-facing interface. There are five command groups: `topic`, `digest`, `posting`,
+`drafts`, `scheduler`. Each is invoked as a Python module:
 
 ```sh
 python -m src.cli.topic <command> [args]
 python -m src.cli.digest <command> [args]
 python -m src.cli.posting <command> [args]
 python -m src.cli.drafts <command> [args]
+python -m src.cli.scheduler <command> [args]
 ```
 
 ## Setup
@@ -198,3 +199,38 @@ currently `held_manual` — rejected with a clear message otherwise.
 ```sh
 python -m src.cli.drafts mark-published <draft-id>
 ```
+
+---
+
+## `scheduler`
+
+Unlike the other command groups, `scheduler` doesn't act on one user's data and
+return — it starts a **long-lived process** that runs scheduled jobs for every user
+in the background, and keeps running until stopped.
+
+### `scheduler run [--cadence-hours N] [--retention-sweep-cadence-hours N]`
+
+Constructs `Config`, starts the in-process APScheduler (`src/scheduler/jobs.py`),
+and blocks until interrupted (Ctrl+C), at which point it shuts the scheduler down
+gracefully rather than killing jobs mid-run. Registers two independent interval
+jobs:
+
+- **`scheduled_digest_run`** — every `--cadence-hours` hours (default 24). Runs a
+  scheduled Digest (`run_type = scheduled`) for every user's active topics, via the
+  same `run_digest` orchestrator entry point `digest run` uses. One user's failure
+  is logged and never blocks another user's run (FR-002's per-topic isolation, one
+  level up).
+- **`source_post_retention_sweep`** — every `--retention-sweep-cadence-hours` hours
+  (default 24). Deletes every `SourcePost` row older than the 30-day retention
+  window, across all topics and users (FR-020) — a standalone sweep that catches
+  rows a run's own inline prune could miss (e.g. a run that crashed before reaching
+  its prune step).
+
+```sh
+python -m src.cli.scheduler run
+python -m src.cli.scheduler run --cadence-hours 12 --retention-sweep-cadence-hours 24
+```
+
+Both jobs fire on a fixed interval from whenever the process starts (not a fixed
+wall-clock time like a cron entry) — run this as a persistent process (e.g. under
+your process manager of choice) rather than a one-shot command.
