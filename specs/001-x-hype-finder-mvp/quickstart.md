@@ -18,8 +18,8 @@ and `contracts/` for command/stage/integration shapes.
 ## Scenario 1 — Ranked, evidence-backed digest (User Story 1, P1)
 
 1. Add a topic with 7+ days of seeded baseline history and inject known-spiking activity
-   (filtered activity ≥ 3x baseline): `topic add "<topic>"` then seed
-   `TopicBaselineSnapshot` rows for the trailing week.
+   (filtered activity ≥ `baseline mean + k * effective standard deviation`, per FR-004):
+   `topic add "<topic>"` then seed `TopicBaselineSnapshot` rows for the trailing week.
 2. Add a second, non-spiking control topic with normal seeded activity.
 3. Run `digest run`.
 4. **Expect**: the spiking topic's `Digest` entry has a summary, rationale, confidence score,
