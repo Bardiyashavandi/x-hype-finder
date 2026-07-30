@@ -13,7 +13,6 @@ from datetime import UTC, date, datetime, timedelta
 from src.models.topic import Topic
 from src.pipeline.detect import (
     BASELINE_WINDOW_DAYS,
-    SPIKE_THRESHOLD,
     DetectResult,
     compute_baseline_mean,
     detect_spike,
@@ -62,20 +61,44 @@ def test_baseline_mean_is_none_with_no_snapshots_in_window():
     assert compute_baseline_mean([], as_of=TODAY) is None
 
 
-def test_spike_flagged_at_exactly_3x_baseline():
+def test_spike_flagged_at_exactly_mean_plus_k_sigma():
     topic = _topic(first_tracked_days_ago=30)
-    snapshots = _snapshots([10, 10, 10])  # baseline mean = 10
-    result = detect_spike(topic, 30, snapshots, as_of=TODAY)
+    snapshots = _snapshots([16, 16, 16])  # baseline mean = 16, stdev = 0
+    # stdev is 0, so sigma_eff floors to sqrt(mean) = 4 (the Poisson noise
+    # floor dominates MIN_SIGMA_FLOOR=1.0 here); threshold = 16 + 2.5*4 = 26.
+    result = detect_spike(topic, 26, snapshots, as_of=TODAY)
     assert result.is_spike is True
-    assert result.spike_ratio == SPIKE_THRESHOLD
+    assert result.spike_ratio == 1.625
 
 
-def test_spike_not_flagged_just_below_3x_baseline():
+def test_spike_not_flagged_just_below_mean_plus_k_sigma():
     topic = _topic(first_tracked_days_ago=30)
-    snapshots = _snapshots([10, 10, 10])
-    result = detect_spike(topic, 29, snapshots, as_of=TODAY)
+    snapshots = _snapshots([16, 16, 16])
+    result = detect_spike(topic, 25, snapshots, as_of=TODAY)
     assert result.is_spike is False
-    assert result.spike_ratio == 2.9
+    assert result.spike_ratio == 1.5625
+
+
+def test_low_volume_topic_no_longer_false_positives_at_old_3x_ratio():
+    # Under the old fixed-3x-ratio rule this would have flagged (3 / 1 ==
+    # 3.0 >= 3.0). At mean=1 that's just ordinary count noise for a quiet
+    # topic — the Poisson floor (sqrt(1)=1) raises the bar to 3.5.
+    topic = _topic(first_tracked_days_ago=30)
+    snapshots = _snapshots([1, 1, 1])  # baseline mean = 1
+    result = detect_spike(topic, 3, snapshots, as_of=TODAY)
+    assert result.is_spike is False
+    assert result.spike_ratio == 3.0
+
+
+def test_high_volume_topic_now_catches_a_sub_3x_real_trend():
+    # Under the old fixed-3x-ratio rule this would have needed current=3000
+    # to register at all. At mean=1000 a 1.1x move is >2.5 effective stdevs
+    # (sigma_eff = sqrt(1000) ≈ 31.6) and is a real signal, not noise.
+    topic = _topic(first_tracked_days_ago=30)
+    snapshots = _snapshots([1000, 1000, 1000])  # baseline mean = 1000
+    result = detect_spike(topic, 1100, snapshots, as_of=TODAY)
+    assert result.is_spike is True
+    assert result.spike_ratio == 1.1
 
 
 def test_normal_non_spiking_control_topic_is_never_a_false_positive():

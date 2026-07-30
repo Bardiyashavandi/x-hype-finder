@@ -62,8 +62,13 @@ aggregated counts, not raw posts, so raw source data doesn't have to be retained
 | `created_at` | timestamp | |
 
 **Validation**: exactly one row per `(topic_id, window_date)`. Baseline for a run = rolling
-mean of `filtered_post_count` over the trailing N days (per research §5/FR-004: current filtered
-activity ≥ 3x this baseline ⇒ spike), excluding the current run's own window.
+mean of `filtered_post_count` over the trailing N days, excluding the current run's own window.
+Per research §5/FR-004: current filtered activity ≥ `baseline mean + k * effective standard
+deviation` (k = 2.5) ⇒ spike, where the effective standard deviation is the larger of the
+trailing window's own stdev and a Poisson noise floor (`sqrt(baseline mean)`) — a fixed ratio
+like a flat 3x is miscalibrated across volume regimes, since count-data variance scales with
+its mean, so scaling the threshold to each topic's own variance replaces one fixed ratio that
+was simultaneously too loose for low-volume topics and too tight for high-volume ones.
 
 **Retention**: this table (aggregates only) is the durable historical record; it is what FR-020
 means by "what is needed to maintain each topic's ongoing historical baseline." Raw `SourcePost`
