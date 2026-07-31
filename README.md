@@ -19,7 +19,8 @@ and target users: [`docs/Product_Brief_X_Hype_Finder.md`](docs/Product_Brief_X_H
 ## Architecture
 
 The system is a strict two-layer split: a **deterministic data pipeline** (rules, statistics, and
-local embeddings — no LLM, fully reproducible and unit-testable) hands off to a small **AI agent
+embeddings — local via Ollama or hosted via Voyage AI, see Setup — no LLM, fully reproducible and
+unit-testable) hands off to a small **AI agent
 layer** (Claude) only for the two stages that genuinely require language judgment — writing the
 summary and drafting the post. Everything downstream of a draft is gated by an explicit posting
 state machine, never a silent auto-publish.
