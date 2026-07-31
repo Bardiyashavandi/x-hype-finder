@@ -26,6 +26,11 @@ TOTAL_BUDGET_USD = 50.00
 # research.md §6: TwitterAPI.io, ~$0.15 per 1,000 read posts, flat.
 TWITTERAPI_IO_COST_PER_1K_READS = 0.15
 
+# TwitterAPIs.com (src/pipeline/fetch_twitterapis_com.py): $0.0008/call,
+# ~20 tweets/call ≈ $0.04 per 1,000 read posts, flat (docs.twitterapis.com,
+# confirmed against a live call 2026-07-31).
+TWITTERAPIS_COM_COST_PER_1K_READS = 0.04
+
 # research.md §3: per-million-token pricing for the two models Summarize/Draft
 # Post may run under (Sonnet during weeks 1-3, reassessed at the week-3 switch).
 CLAUDE_PRICING_PER_MILLION_TOKENS = {
@@ -37,7 +42,7 @@ CLAUDE_PRICING_PER_MILLION_TOKENS = {
 @dataclass(frozen=True)
 class CostEntry:
     timestamp: float
-    source: str  # "twitterapi_io" | "claude"
+    source: str  # "twitterapi_io" | "twitterapis_com" | "claude"
     amount_usd: float
     detail: dict
 
@@ -57,6 +62,13 @@ def record_twitterapi_io_read(post_count: int) -> float:
     """Record the cost of one TwitterAPI.io fetch call and return that cost in USD."""
     amount = (post_count / 1000) * TWITTERAPI_IO_COST_PER_1K_READS
     _append_entry(CostEntry(time.time(), "twitterapi_io", amount, {"post_count": post_count}))
+    return amount
+
+
+def record_twitterapis_com_read(post_count: int) -> float:
+    """Record the cost of one TwitterAPIs.com fetch call and return that cost in USD."""
+    amount = (post_count / 1000) * TWITTERAPIS_COM_COST_PER_1K_READS
+    _append_entry(CostEntry(time.time(), "twitterapis_com", amount, {"post_count": post_count}))
     return amount
 
 
@@ -97,7 +109,8 @@ def get_cumulative_spend() -> float:
 
 
 def get_cumulative_spend_by_source(source: str) -> float:
-    """Sum recorded cost entries for one `source` ("twitterapi_io" | "claude").
+    """Sum recorded cost entries for one `source` ("twitterapi_io" |
+    "twitterapis_com" | "claude").
 
     Used by T059's week-3 checkpoint, which reassesses against the $5
     Anthropic credit specifically — a narrower figure than the $50 total
