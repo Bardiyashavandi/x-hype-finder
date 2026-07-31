@@ -41,14 +41,23 @@ credentials for these integrations are environment-variable only (Constitution V
   Theme/topic is excluded with a note in the digest rather than failing the whole run (PRD §14
   error-handling table, Constitution Development Workflow section).
 
-## Embeddings — Local Ollama (`nomic-embed-text`)
+## Embeddings — pluggable provider (`src/pipeline/embedding_provider.py`)
 
-- **Auth**: none (localhost-only, `http://localhost:11434/api/embed`).
-- **Used for**: Cluster stage similarity grouping, and Filter Tier 2's coordinated-content check
-  (research §4, §5).
-- **Failure handling**: if the local Ollama server is unreachable, this is a local-environment
-  fault, not a per-topic data fault — the run fails fast with a clear local-setup error rather
-  than silently degrading clustering/filtering quality.
+Selected via `EMBEDDING_PROVIDER` (default `ollama`); Cluster and Filter Tier 2 both depend only
+on the `texts -> vectors` abstraction, never on a specific provider's client directly.
+
+- **`ollama` (default) — local Ollama (`nomic-embed-text`)**
+  - **Auth**: none (localhost-only, `http://localhost:11434/api/embed`).
+  - **Failure handling**: if the local Ollama server is unreachable, this is a local-environment
+    fault, not a per-topic data fault — the run fails fast with a clear local-setup error rather
+    than silently degrading clustering/filtering quality.
+- **`voyage` — hosted Voyage AI (`voyage-4-lite`)**
+  - **Auth**: `VOYAGE_API_KEY` env var, required only when this provider is selected.
+  - **Failure handling**: same fail-fast principle as `ollama` — an unreachable API, bad key, or
+    malformed response raises immediately rather than degrading clustering/filtering quality.
+
+- **Used for** (both providers): Cluster stage similarity grouping, and Filter Tier 2's
+  coordinated-content check (research §4, §5).
 
 ## Notifications — Resend
 

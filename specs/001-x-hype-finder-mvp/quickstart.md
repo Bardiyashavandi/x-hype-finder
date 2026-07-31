@@ -8,11 +8,14 @@ and `contracts/` for command/stage/integration shapes.
 
 ## Prerequisites
 
-- Python 3.11+, [Ollama](https://ollama.com) running locally with `nomic-embed-text` pulled
-  (`ollama pull nomic-embed-text`).
+- Python 3.11+, and an embedding provider for Cluster/Filter Tier 2
+  (`src/pipeline/embedding_provider.py`): either [Ollama](https://ollama.com) running locally with
+  `nomic-embed-text` pulled (`ollama pull nomic-embed-text`) — the default — or
+  `EMBEDDING_PROVIDER=voyage` with `VOYAGE_API_KEY` set for the hosted Voyage AI (`voyage-4-lite`)
+  alternative.
 - Environment variables set (never committed — Constitution V, FR-021):
-  `TWITTERAPI_IO_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, and per-user X posting OAuth
-  credentials.
+  `TWITTERAPI_IO_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, the embedding provider vars above,
+  and per-user X posting OAuth credentials.
 - Local SQLite DB initialized (migrations applied).
 
 ## Scenario 1 — Ranked, evidence-backed digest (User Story 1, P1)
