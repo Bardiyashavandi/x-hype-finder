@@ -41,7 +41,7 @@ signal rather than manufactured hype, with the original source posts always one 
 
 Full pitch, market analysis, competitive gap, and target users:
 [`docs/Product_Brief_X_Hype_Finder.md`](docs/Product_Brief_X_Hype_Finder.md). Detailed
-requirements, architecture, and cost model: [`docs/PRD_X_Hype_Finder_.md`](docs/PRD_X_Hype_Finder_.md).
+requirements, architecture, and cost model: [`docs/PRD_X_Hype_Finder.md`](docs/PRD_X_Hype_Finder.md).
 
 ## Architecture
 

@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Build X Hype Finder based on docs/PRD_X_Hype_Finder_.md and docs/Product_Brief_X_Hype_Finder.md — read both files fully and use them as the source of truth for the specification. This is an agent that monitors X for configured topics, detects genuine activity spikes against each topic's own baseline, filters bot/noise content before spike detection runs, clusters related content into themes, generates confidence-scored summaries, and delivers a ranked digest — with posting handled manually for the first 3 weeks before switching to confidence-gated autonomous posting."
+**Input**: User description: "Build X Hype Finder based on docs/PRD_X_Hype_Finder.md and docs/Product_Brief_X_Hype_Finder.md — read both files fully and use them as the source of truth for the specification. This is an agent that monitors X for configured topics, detects genuine activity spikes against each topic's own baseline, filters bot/noise content before spike detection runs, clusters related content into themes, generates confidence-scored summaries, and delivers a ranked digest — with posting handled manually for the first 3 weeks before switching to confidence-gated autonomous posting."
 
 ## User Scenarios & Testing *(mandatory)*
 
