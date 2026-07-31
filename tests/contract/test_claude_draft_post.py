@@ -81,6 +81,23 @@ def test_request_shape_forces_the_draft_post_tool_and_constrains_length():
     assert "280 characters or fewer" in prompt
 
 
+def test_voice_guide_is_loaded_from_its_standalone_file_not_hardcoded():
+    """The draft_text schema description's tone/grounding constraints must
+    come from prompts/voice_guide.md at call time, not a copy hardcoded in
+    draft_post.py — this asserts against the loaded file content itself so
+    an edit to the guide never requires a matching test edit."""
+    voice_guide_text = draft_post_module.VOICE_GUIDE_PATH.read_text(encoding="utf-8").strip()
+    client = _client_with_response(_response())
+
+    generate_draft_post(_input(), api_key=API_KEY, model=MODEL, client=client)
+
+    _, kwargs = client.messages.create.call_args
+    schema_description = kwargs["tools"][0]["input_schema"]["properties"]["draft_text"][
+        "description"
+    ]
+    assert voice_guide_text in schema_description
+
+
 def test_successful_response_parses_into_draft_post_result():
     client = _client_with_response(_response(content=[_tool_use_block(draft_text="Solid post.")]))
 

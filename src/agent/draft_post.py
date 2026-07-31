@@ -12,11 +12,17 @@ can move from `claude-sonnet-5` to `claude-haiku-4-5-20251001` after T059's
 week-3 reassessment without touching this module (research.md §3,
 /speckit-analyze finding E1). Token spend is reported to the cost tracker
 from T022. Mirrors src/agent/summarize.py's structure/conventions.
+
+The tone/grounding constraints on `draft_text` (natural voice, no hashtag
+spam, no fabricated facts, ...) live in `prompts/voice_guide.md`, not
+hardcoded here — reviewable/editable as a standalone style doc without
+touching this module.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import anthropic
 
@@ -35,29 +41,39 @@ _MAX_POST_LENGTH = 280
 # length handling).
 _MAX_LENGTH_CORRECTION_ATTEMPTS = 2
 
-_TOOL_SCHEMA = {
-    "name": DRAFT_POST_TOOL_NAME,
-    "strict": True,
-    "description": "Submit a ready-to-publish X post drafted from a trending theme.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "draft_text": {
-                "type": "string",
-                "maxLength": _MAX_POST_LENGTH,
-                "description": (
-                    f"The post text itself, {_MAX_POST_LENGTH} characters or fewer, "
-                    "written in a natural, human voice — no hashtag spam, no "
-                    "generic hype filler, no fabricated numbers not present in "
-                    "the provided summary/rationale/examples. State the trend "
-                    "plainly, as a person who follows this topic closely would."
-                ),
+VOICE_GUIDE_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "voice_guide.md"
+
+
+def _load_voice_guide() -> str:
+    """Load the draft_text tone/grounding constraints from their standalone
+    style doc (VOICE_GUIDE_PATH) rather than hardcoding them in this module."""
+    return VOICE_GUIDE_PATH.read_text(encoding="utf-8").strip()
+
+
+def _build_tool_schema() -> dict:
+    return {
+        "name": DRAFT_POST_TOOL_NAME,
+        "strict": True,
+        "description": "Submit a ready-to-publish X post drafted from a trending theme.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "draft_text": {
+                    "type": "string",
+                    "maxLength": _MAX_POST_LENGTH,
+                    "description": (
+                        f"The post text itself, {_MAX_POST_LENGTH} characters or "
+                        f"fewer.\n\n{_load_voice_guide()}"
+                    ),
+                },
             },
+            "required": ["draft_text"],
+            "additionalProperties": False,
         },
-        "required": ["draft_text"],
-        "additionalProperties": False,
-    },
-}
+    }
+
+
+_TOOL_SCHEMA = _build_tool_schema()
 
 _RETRYABLE_ERRORS = (
     anthropic.APIConnectionError,
