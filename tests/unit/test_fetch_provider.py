@@ -1,6 +1,6 @@
 """Unit tests for the fetch provider abstraction
 (src/pipeline/fetch_provider.py) — selection via FETCH_PROVIDER,
-default-to-twitterapi_io, and the *_KEY-required-only-if-selected rule.
+default-to-twitterapis_com, and the *_KEY-required-only-if-selected rule.
 
 Uses an explicit `env` mapping throughout (never the real environment or
 `.env`), and never makes a live network call — each provider's own
@@ -19,11 +19,11 @@ from src.pipeline import fetch_twitterapis_com as twitterapis_com_fetch
 from src.pipeline.fetch_provider import FetchProviderError, get_fetch_provider
 
 
-def test_defaults_to_twitterapi_io_when_unset():
-    provider = get_fetch_provider(env={"TWITTERAPI_IO_KEY": "test-key"})
+def test_defaults_to_twitterapis_com_when_unset():
+    provider = get_fetch_provider(env={"TWITTERAPIS_COM_KEY": "test-key"})
 
     assert isinstance(provider, functools.partial)
-    assert provider.func is twitterapi_io_fetch.fetch_topic_posts
+    assert provider.func is twitterapis_com_fetch.fetch_topic_posts
     assert provider.keywords == {"api_key": "test-key"}
 
 

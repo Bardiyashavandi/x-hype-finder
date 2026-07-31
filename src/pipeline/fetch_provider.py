@@ -4,15 +4,18 @@ Provider), mirroring src/pipeline/embedding_provider.py's shape.
 `FETCH_PROVIDER` selects which X data read backend `get_fetch_provider()`
 resolves to at runtime:
 
-- `twitterapi_io` (default) — src/pipeline/fetch.py. Requires `TWITTERAPI_IO_KEY`.
-- `twitterapis_com` — src/pipeline/fetch_twitterapis_com.py, an alternative
-  provider with no fixed QPS cap. Requires `TWITTERAPIS_COM_KEY`.
+- `twitterapis_com` (default) — src/pipeline/fetch_twitterapis_com.py.
+  Requires `TWITTERAPIS_COM_KEY`. Made default 2026-07-31: a live side-by-side
+  comparison (see PR #11 / the follow-up that wired this module in) found it
+  faster and at full data parity with TwitterAPI.io, without that provider's
+  0.2 QPS free-tier pacing.
+- `twitterapi_io` — src/pipeline/fetch.py. Requires `TWITTERAPI_IO_KEY`.
 
-Not yet wired into src/pipeline/orchestrator.py, which still calls
-src/pipeline/fetch.py's `fetch_topic_posts` directly — orchestrator.py's Fetch
-call site is monkeypatched by name (`fetch_topic_posts`) across ~26 existing
-integration test cases, so switching it to resolve through this module is a
-deliberately separate follow-up rather than bundled in here.
+Wired into src/pipeline/orchestrator.py's `_run_topic_pipeline`, which calls
+`get_fetch_provider()(topic.name, topic.x_handles)` — every integration test
+that stubs Fetch monkeypatches `orchestrator_module.get_fetch_provider`
+(returning a `(topic_name, x_handles, **kwargs) -> FetchResult` stub) rather
+than a concrete provider's `fetch_topic_posts`.
 
 Resolution happens lazily (`get_fetch_provider()` is called at the point a
 fetch call is actually about to be made, not at import time), same rationale
@@ -38,7 +41,7 @@ TWITTERAPIS_COM_KEY_ENV = "TWITTERAPIS_COM_KEY"
 
 TWITTERAPI_IO_PROVIDER = "twitterapi_io"
 TWITTERAPIS_COM_PROVIDER = "twitterapis_com"
-DEFAULT_FETCH_PROVIDER = TWITTERAPI_IO_PROVIDER
+DEFAULT_FETCH_PROVIDER = TWITTERAPIS_COM_PROVIDER
 _SUPPORTED_PROVIDERS = (TWITTERAPI_IO_PROVIDER, TWITTERAPIS_COM_PROVIDER)
 
 
@@ -65,7 +68,7 @@ class FetchProviderError(RuntimeError):
 
 
 def get_fetch_provider(*, env: dict[str, str] | None = None) -> FetchProvider:
-    """Resolve `FETCH_PROVIDER` (default "twitterapi_io") into a ready-to-call
+    """Resolve `FETCH_PROVIDER` (default "twitterapis_com") into a ready-to-call
     `(topic_name, x_handles, ...) -> FetchResult` function.
 
     Loads `.env` (via python-dotenv) into `os.environ` first, unless an
@@ -95,7 +98,7 @@ def get_fetch_provider(*, env: dict[str, str] | None = None) -> FetchProvider:
             raise FetchProviderError(
                 f"{FETCH_PROVIDER_ENV}={TWITTERAPIS_COM_PROVIDER} requires "
                 f"{TWITTERAPIS_COM_KEY_ENV} to be set. Copy .env.example to .env and fill it in, "
-                f"or set {FETCH_PROVIDER_ENV}={TWITTERAPI_IO_PROVIDER} to use the default "
+                f"or set {FETCH_PROVIDER_ENV}={TWITTERAPI_IO_PROVIDER} to use the alternative "
                 "provider instead."
             )
         return functools.partial(twitterapis_com_fetch.fetch_topic_posts, api_key=api_key)

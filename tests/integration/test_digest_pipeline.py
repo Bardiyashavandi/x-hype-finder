@@ -103,7 +103,7 @@ def _seed_baseline(session, topic: Topic, *, daily_count: int, days: int = 7) ->
 
 
 def _fake_fetch(results: dict[str, FetchResult]):
-    def fake(topic_name, x_handles, *, api_key):
+    def fake(topic_name, x_handles, **kwargs):
         return results[topic_name]
 
     return fake
@@ -194,8 +194,8 @@ def test_spiking_topic_surfaces_a_theme_with_summary_rationale_confidence_and_ex
     posts = [_clean_post(str(i), f"Distinct post number {i} about AAPL") for i in range(35)]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch({"AAPL": FetchResult(posts=posts, error=None)}),
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"AAPL": FetchResult(posts=posts, error=None)}),
     )
     monkeypatch.setattr(orchestrator_module, "cluster_posts", _single_group_cluster)
     monkeypatch.setattr(orchestrator_module, "summarize_theme", _fake_summarize_by_spike())
@@ -232,8 +232,8 @@ def test_control_topic_is_not_falsely_flagged_as_a_spike(db_session, monkeypatch
     ]  # ~baseline
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch({"CONTROL": FetchResult(posts=posts, error=None)}),
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"CONTROL": FetchResult(posts=posts, error=None)}),
     )
     monkeypatch.setattr(orchestrator_module, "cluster_posts", _single_group_cluster)
     monkeypatch.setattr(orchestrator_module, "summarize_theme", _fake_summarize_by_spike())
@@ -256,8 +256,8 @@ def test_topic_within_observation_period_never_flags_spike_regardless_of_activit
     posts = [_clean_post(str(i), f"Huge burst of activity {i} about NEWTOPIC") for i in range(200)]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch({"NEWTOPIC": FetchResult(posts=posts, error=None)}),
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"NEWTOPIC": FetchResult(posts=posts, error=None)}),
     )
     monkeypatch.setattr(orchestrator_module, "cluster_posts", _single_group_cluster)
     monkeypatch.setattr(orchestrator_module, "summarize_theme", _fake_summarize_by_spike())
@@ -294,8 +294,8 @@ def test_near_duplicate_posts_collapse_into_one_theme_via_real_cluster(db_sessio
 
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch({"DUPTOPIC": FetchResult(posts=posts, error=None)}),
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"DUPTOPIC": FetchResult(posts=posts, error=None)}),
     )
     monkeypatch.setattr(
         orchestrator_module,
@@ -325,8 +325,8 @@ def test_fetch_error_on_one_topic_never_halts_the_run_for_another(db_session, mo
     posts = [_clean_post(str(i), f"Normal post {i} about HEALTHY") for i in range(11)]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch(
+        "get_fetch_provider",
+        lambda **_: _fake_fetch(
             {
                 "HEALTHY": FetchResult(posts=posts, error=None),
                 "BROKEN": FetchResult(
@@ -368,8 +368,8 @@ def test_rate_limited_fetch_marks_topic_incomplete_rate_limited_not_generic_fetc
     posts = [_clean_post(str(i), f"Normal post {i} about HEALTHY") for i in range(11)]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch(
+        "get_fetch_provider",
+        lambda **_: _fake_fetch(
             {
                 "HEALTHY": FetchResult(posts=posts, error=None),
                 "LIMITED": FetchResult(
@@ -410,8 +410,8 @@ def test_zero_fetched_posts_marks_no_significant_activity(db_session, monkeypatc
 
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch({"QUIET": FetchResult(posts=[], error=None)}),
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"QUIET": FetchResult(posts=[], error=None)}),
     )
 
     digest = run_digest(
@@ -442,8 +442,8 @@ def test_all_posts_filtered_as_noise_when_only_bot_spam_is_fetched(db_session, m
     ]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fake_fetch({"SPAMMY": FetchResult(posts=bot_posts, error=None)}),
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"SPAMMY": FetchResult(posts=bot_posts, error=None)}),
     )
 
     digest = run_digest(

@@ -1,5 +1,6 @@
-"""TwitterAPIs.com Fetch client (src/pipeline/fetch_provider.py's alternative
-to the default TwitterAPI.io client, src/pipeline/fetch.py).
+"""TwitterAPIs.com Fetch client — the default Fetch provider
+(src/pipeline/fetch_provider.py), ahead of the original TwitterAPI.io client
+(src/pipeline/fetch.py).
 
 Selected via `FETCH_PROVIDER=twitterapis_com` (src/pipeline/fetch_provider.py).
 Mirrors fetch.py's shape (`fetch_topic_posts` returning the same `FetchResult`/

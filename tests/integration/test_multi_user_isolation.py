@@ -139,7 +139,7 @@ def _hermetic_pipeline(monkeypatch):
 
 
 def _fetch_stub_per_topic(posts_by_topic: dict[str, list[RawPost]]):
-    def fake(name, x_handles, *, api_key):
+    def fake(name, x_handles, **kwargs):
         return FetchResult(posts=posts_by_topic[name], error=None)
 
     return fake
@@ -167,8 +167,8 @@ def two_users_with_overlapping_topics(db_session, monkeypatch):
     posts_b = [_post(f"b-{i}", f"User B's post {i} about {SHARED_TOPIC_NAME}") for i in range(6)]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fetch_stub_per_topic({SHARED_TOPIC_NAME: posts_a}),
+        "get_fetch_provider",
+        lambda **_: _fetch_stub_per_topic({SHARED_TOPIC_NAME: posts_a}),
     )
     digest_a = run_digest(
         db_session, user_a, [topic_a], run_type=DigestRunType.ON_DEMAND, config=_config()
@@ -176,8 +176,8 @@ def two_users_with_overlapping_topics(db_session, monkeypatch):
 
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fetch_stub_per_topic({SHARED_TOPIC_NAME: posts_b}),
+        "get_fetch_provider",
+        lambda **_: _fetch_stub_per_topic({SHARED_TOPIC_NAME: posts_b}),
     )
     digest_b = run_digest(
         db_session, user_b, [topic_b], run_type=DigestRunType.ON_DEMAND, config=_config()
@@ -241,9 +241,7 @@ def test_direct_owner_models_are_scoped_per_user(
         assert row.user_id == user_b.id
 
 
-@pytest.mark.parametrize(
-    "model", [DigestTopicResult, Theme, SourcePost, TopicBaselineSnapshot]
-)
+@pytest.mark.parametrize("model", [DigestTopicResult, Theme, SourcePost, TopicBaselineSnapshot])
 def test_transitively_owned_models_are_scoped_per_user(
     db_session, two_users_with_overlapping_topics, model
 ):

@@ -123,7 +123,7 @@ def _hermetic_pipeline(monkeypatch):
 
 
 def _fetch_stub(topic_name: str, posts: list[RawPost]):
-    def fake(name, x_handles, *, api_key):
+    def fake(name, x_handles, **kwargs):
         assert name == topic_name
         return FetchResult(posts=posts, error=None)
 
@@ -136,7 +136,9 @@ def test_on_demand_single_topic_run_completes_well_within_the_five_minute_budget
     user = _seed_user(db_session)
     topic = _seed_topic(db_session, user, "AAPL")
     posts = [_clean_post(str(i), f"Distinct post number {i} about AAPL") for i in range(11)]
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub("AAPL", posts))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub("AAPL", posts)
+    )
 
     started = time.perf_counter()
     digest = run_digest(
@@ -152,7 +154,9 @@ def test_on_demand_run_duration_is_logged_without_a_budget_warning(db_session, m
     user = _seed_user(db_session)
     topic = _seed_topic(db_session, user, "AAPL")
     posts = [_clean_post(str(i), f"Distinct post number {i} about AAPL") for i in range(11)]
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub("AAPL", posts))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub("AAPL", posts)
+    )
 
     with caplog.at_level(logging.INFO, logger="src.pipeline.orchestrator"):
         run_digest(db_session, user, [topic], run_type=DigestRunType.ON_DEMAND, config=_config())
@@ -165,7 +169,9 @@ def test_on_demand_run_over_budget_logs_a_warning(db_session, monkeypatch, caplo
     user = _seed_user(db_session)
     topic = _seed_topic(db_session, user, "AAPL")
     posts = [_clean_post(str(i), f"Distinct post number {i} about AAPL") for i in range(11)]
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub("AAPL", posts))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub("AAPL", posts)
+    )
 
     real_datetime = orchestrator_module.datetime
     calls = {"n": 0}
@@ -198,13 +204,13 @@ def test_on_demand_and_scheduled_runs_produce_matching_theme_output(db_session, 
 
     same_posts_kwargs = [(str(i), f"Distinct post number {i} about a ticker") for i in range(11)]
 
-    def fetch_stub(name, x_handles, *, api_key):
+    def fetch_stub(name, x_handles, **kwargs):
         posts = [
             _clean_post(pid, text, author=f"user_{name}_{pid}") for pid, text in same_posts_kwargs
         ]
         return FetchResult(posts=posts, error=None)
 
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", fetch_stub)
+    monkeypatch.setattr(orchestrator_module, "get_fetch_provider", lambda **_: fetch_stub)
 
     on_demand_digest = run_digest(
         db_session, user, [on_demand_topic], run_type=DigestRunType.ON_DEMAND, config=_config()
@@ -260,12 +266,12 @@ def test_cli_digest_run_with_topic_flag_scopes_to_a_single_topic(db_session, mon
     target_topic = _seed_topic(db_session, user, "AAPL")
     other_topic = _seed_topic(db_session, user, "MSFT")
 
-    def fetch_stub(name, x_handles, *, api_key):
+    def fetch_stub(name, x_handles, **kwargs):
         assert name == "AAPL"  # must never be called for the untargeted topic
         posts = [_clean_post(str(i), f"Distinct post number {i} about AAPL") for i in range(11)]
         return FetchResult(posts=posts, error=None)
 
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", fetch_stub)
+    monkeypatch.setattr(orchestrator_module, "get_fetch_provider", lambda **_: fetch_stub)
 
     exit_code = _run_cli(db_session, ["run", "--topic", "AAPL"], monkeypatch)
     assert exit_code == 0

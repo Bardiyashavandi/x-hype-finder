@@ -129,7 +129,7 @@ def _hermetic_pipeline(monkeypatch):
 
 
 def _fetch_stub(results: dict[str, list[RawPost]]):
-    def fake(name, x_handles, *, api_key):
+    def fake(name, x_handles, **kwargs):
         return FetchResult(posts=results[name], error=None)
 
     return fake
@@ -156,7 +156,9 @@ def test_full_flag_shows_every_underlying_post_with_its_filter_outcome(
     ]
     bot_posts = [_bot_post(f"bot-{i}") for i in range(2)]
     monkeypatch.setattr(
-        orchestrator_module, "fetch_topic_posts", _fetch_stub({"AAPL": kept_posts + bot_posts})
+        orchestrator_module,
+        "get_fetch_provider",
+        lambda **_: _fetch_stub({"AAPL": kept_posts + bot_posts}),
     )
 
     exit_code = _run_cli(db_session, ["run", "--topic", "AAPL"], monkeypatch)
@@ -193,7 +195,7 @@ def test_all_filtered_as_noise_topic_is_rendered_explicitly(db_session, monkeypa
     _seed_topic(db_session, user, "SPAMMY")
     bot_posts = [_bot_post(f"bot-{i}") for i in range(5)]
     monkeypatch.setattr(
-        orchestrator_module, "fetch_topic_posts", _fetch_stub({"SPAMMY": bot_posts})
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub({"SPAMMY": bot_posts})
     )
 
     exit_code = _run_cli(db_session, ["run", "--topic", "SPAMMY"], monkeypatch)
@@ -221,7 +223,9 @@ def test_all_filtered_as_noise_topic_is_rendered_explicitly(db_session, monkeypa
 def test_no_significant_activity_topic_is_rendered_explicitly(db_session, monkeypatch, capsys):
     user = _seed_user(db_session)
     _seed_topic(db_session, user, "QUIET")
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub({"QUIET": []}))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub({"QUIET": []})
+    )
 
     exit_code = _run_cli(db_session, ["run", "--topic", "QUIET"], monkeypatch)
     assert exit_code == 0
@@ -244,8 +248,8 @@ def test_topic_flag_scopes_output_to_a_single_topic(db_session, monkeypatch, cap
     msft_posts = [_clean_post(f"m{i}", f"Distinct post number {i} about MSFT") for i in range(4)]
     monkeypatch.setattr(
         orchestrator_module,
-        "fetch_topic_posts",
-        _fetch_stub({"AAPL": aapl_posts, "MSFT": msft_posts}),
+        "get_fetch_provider",
+        lambda **_: _fetch_stub({"AAPL": aapl_posts, "MSFT": msft_posts}),
     )
 
     exit_code = _run_cli(db_session, ["run"], monkeypatch)
@@ -265,7 +269,9 @@ def test_show_with_unknown_topic_name_is_rejected(db_session, monkeypatch, capsy
     user = _seed_user(db_session)
     _seed_topic(db_session, user, "AAPL")
     posts = [_clean_post(str(i), f"Distinct post number {i} about AAPL") for i in range(4)]
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub({"AAPL": posts}))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub({"AAPL": posts})
+    )
 
     exit_code = _run_cli(db_session, ["run", "--topic", "AAPL"], monkeypatch)
     assert exit_code == 0
