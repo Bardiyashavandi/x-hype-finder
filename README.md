@@ -32,7 +32,7 @@ graph TD
         direction TB
         Fetch["Fetch<br/>TwitterAPI.io reads"] --> Filter["Filter<br/>Tier 1 rules + Tier 2<br/>embedding coordination check"]
         Filter --> Detect["Detect<br/>baseline vs. spike,<br/>7-day observation gate"]
-        Detect --> Cluster["Cluster<br/>nomic-embed-text<br/>near-duplicate grouping"]
+        Detect --> Cluster["Cluster<br/>embedding-based<br/>near-duplicate grouping"]
     end
 
     Cluster --> Rank["Rank<br/>descending significance"]
@@ -67,8 +67,9 @@ graph TD
 ```
 
 - **Data pipeline** (`src/pipeline/`) — Fetch → Filter → Detect → Cluster. Rule-based scoring,
-  statistical baseline/spike comparison, and local embeddings only. No LLM at any tier, by design
-  (see Cost Model below and the project constitution) — reproducible and independently unit-tested.
+  statistical baseline/spike comparison, and embeddings (local by default, see Setup) only. No LLM
+  at any tier, by design (see Cost Model below and the project constitution) — reproducible and
+  independently unit-tested.
 - **Agent layer** (`src/agent/`) — Summarize → Draft Post. The only two stages that call an LLM
   (Claude), and only after the pipeline has already decided *what's* significant — the model
   explains and drafts, it never decides what counts as a spike.
@@ -84,13 +85,20 @@ graph TD
    ```sh
    uv sync
    ```
-3. **[Ollama](https://ollama.com)**, running locally, with the embedding model pulled:
-   ```sh
-   ollama pull nomic-embed-text
-   ```
+3. An embedding provider for Cluster and Filter Tier 2 (`src/pipeline/embedding_provider.py`) —
+   pick one, selected via the `EMBEDDING_PROVIDER` env var:
+   - **`ollama` (default, free)** — [Ollama](https://ollama.com), running locally, with the
+     embedding model pulled:
+     ```sh
+     ollama pull nomic-embed-text
+     ```
+   - **`voyage`** — no local install needed; set `EMBEDDING_PROVIDER=voyage` and
+     `VOYAGE_API_KEY` in `.env` (get a key at [voyageai.com](https://www.voyageai.com)). Uses
+     `voyage-4-lite`.
 4. Copy `.env.example` to `.env` and fill in real values — see that file for the exact variables
-   needed (`TWITTERAPI_IO_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, and per-user X OAuth
-   credentials namespaced by each user's `x_account_handle`). `.env` is gitignored; never commit it.
+   needed (`TWITTERAPI_IO_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, the embedding provider vars
+   from step 3, and per-user X OAuth credentials namespaced by each user's `x_account_handle`).
+   `.env` is gitignored; never commit it.
 5. Apply database migrations:
    ```sh
    uv run alembic upgrade head
@@ -183,7 +191,7 @@ stage that doesn't need language judgment onto free, local infrastructure:
 
 | Component | Approach | Cost |
 |---|---|---|
-| Embeddings (clustering + Filter Tier 2) | Local Ollama (`nomic-embed-text`) | $0 |
+| Embeddings (clustering + Filter Tier 2) | Local Ollama (`nomic-embed-text`, default) or hosted Voyage AI (`voyage-4-lite`, opt-in via `EMBEDDING_PROVIDER=voyage`) | $0 (ollama) / usage-based (voyage) |
 | Filter Tier 1, Detect, Cluster, Rank | Deterministic rules/statistics, in-process | $0 |
 | X data reads | TwitterAPI.io (~$0.15/1K reads) | ~$4.50/mo at MVP scale |
 | Summarize + Draft Post | Claude (`claude-sonnet-5`, reassessed for `claude-haiku-4-5` after the week-3 checkpoint) | ~$2-9/mo, tracked against a $5 credit |

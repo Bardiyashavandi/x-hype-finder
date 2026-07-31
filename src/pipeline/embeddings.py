@@ -1,11 +1,13 @@
 """Ollama embeddings client wrapper (tasks.md T036, contracts/external-integrations.md
 § Embeddings, research.md §4).
 
-Used by Filter Tier 2's coordinated-content check (src/pipeline/filter.py) and,
-in a later phase, Cluster. Local-only, no API key — if Ollama is unreachable
-this is a local-environment fault, not a per-topic data fault, so it fails
-fast with a clear setup error rather than silently degrading filtering/
-clustering quality (contracts/external-integrations.md).
+The default embedding provider (src/pipeline/embedding_provider.py) used by
+Filter Tier 2's coordinated-content check (src/pipeline/filter.py) and
+Cluster (src/pipeline/cluster.py). Local-only, no API key — if Ollama is
+unreachable this is a local-environment fault, not a per-topic data fault, so
+it fails fast with a clear setup error rather than silently degrading
+filtering/clustering quality (contracts/external-integrations.md). See
+src/pipeline/embeddings_voyage.py for the hosted alternative.
 """
 
 from __future__ import annotations

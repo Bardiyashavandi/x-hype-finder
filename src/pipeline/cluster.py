@@ -2,8 +2,8 @@
 contracts/pipeline-stages.md § Cluster; FR-006, research.md §4).
 
 Fully deterministic (Constitution Principle I) — groups a topic's `kept`
-(post-Filter) posts into Theme candidates by `nomic-embed-text` embedding
-similarity, reusing the same Ollama client (src/pipeline/embeddings.py)
+(post-Filter) posts into Theme candidates by embedding similarity, reusing
+the same embedding provider abstraction (src/pipeline/embedding_provider.py)
 Filter Tier 2 already uses. No LLM/agent judgment: grouping is a plain
 similarity-threshold clustering over embedding vectors.
 """
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
-from src.pipeline.embeddings import get_embeddings
+from src.pipeline.embedding_provider import get_embedding_provider
 from src.pipeline.fetch import RawPost
 
 # Posts with cosine similarity at/above this threshold land in the same
@@ -44,7 +44,7 @@ def _normalized_vectors(vectors: list[list[float]]) -> np.ndarray:
 def cluster_posts(
     posts: list[RawPost],
     *,
-    embed_fn: Callable[[list[str]], list[list[float]]] = get_embeddings,
+    embed_fn: Callable[[list[str]], list[list[float]]] | None = None,
     similarity_threshold: float = CLUSTER_SIMILARITY_THRESHOLD,
 ) -> list[ThemeCandidate]:
     """Group kept posts into Theme candidates by embedding similarity.
@@ -58,7 +58,8 @@ def cluster_posts(
     if len(posts) == 1:
         return [ThemeCandidate(posts=(posts[0],))]
 
-    vectors = embed_fn([post.text for post in posts])
+    resolved_embed_fn = embed_fn if embed_fn is not None else get_embedding_provider()
+    vectors = resolved_embed_fn([post.text for post in posts])
     normalized = _normalized_vectors(vectors)
     distance_threshold = max(1.0 - similarity_threshold, 0.0)
 

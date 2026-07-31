@@ -29,7 +29,7 @@ from difflib import SequenceMatcher
 import numpy as np
 
 from src.models.source_post import FilterOutcome
-from src.pipeline.embeddings import get_embeddings
+from src.pipeline.embedding_provider import get_embedding_provider
 from src.pipeline.fetch import RawPost
 
 # --- Tier 1 thresholds (research.md §5) ---
@@ -250,19 +250,23 @@ def apply_tier2(
 def filter_posts(
     posts: list[RawPost],
     *,
-    embed_fn: Callable[[list[str]], list[list[float]]] = get_embeddings,
+    embed_fn: Callable[[list[str]], list[list[float]]] | None = None,
 ) -> list[FilteredPost]:
     """Run the full two-tier Filter stage over one topic's fetched posts.
 
-    Tier 2 (and its Ollama embedding call) only runs when Tier 1 leaves at
+    Tier 2 (and its embedding provider call) only runs when Tier 1 leaves at
     least one post ambiguous — clear-keep/clear-exclude posts never pay for
-    an embedding call.
+    an embedding call, or for resolving which embedding provider to use.
     """
     tier1_results = score_tier1(posts)
     ambiguous = [
         post for post in posts if tier1_results[post.x_post_id].decision == Tier1Decision.AMBIGUOUS
     ]
-    tier2_outcomes = apply_tier2(ambiguous, posts, tier1_results, embed_fn=embed_fn)
+    if ambiguous:
+        resolved_embed_fn = embed_fn if embed_fn is not None else get_embedding_provider()
+        tier2_outcomes = apply_tier2(ambiguous, posts, tier1_results, embed_fn=resolved_embed_fn)
+    else:
+        tier2_outcomes = {}
 
     filtered: list[FilteredPost] = []
     for post in posts:
