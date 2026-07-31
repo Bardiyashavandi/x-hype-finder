@@ -73,7 +73,7 @@ def decide_and_publish(
 
     try:
         x_client.create_tweet(text=draft_text)
-    except Exception as exc:  # noqa: BLE001 - any X API failure must surface, never crash the run (FR-019)
+    except Exception as exc:  # noqa: BLE001 - any X API failure must surface (FR-019)
         return PublishOutcome(DraftPostStatus.PUBLISH_FAILED, None, str(exc))
 
     posting_mode.last_post_published_at = effective_now

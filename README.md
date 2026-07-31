@@ -199,6 +199,13 @@ stage that doesn't need language judgment onto free, local infrastructure:
 | X posting | Official X API v2, capped at 5 posts/24h | ~$2.25/mo worst case |
 | Notifications | Resend free tier | $0 |
 
+**Observed from a live run (2026-07-31):** the table above is the planning estimate. One real
+end-to-end `digest run` — a single broad topic, 40 fetched posts, 37 themes produced — cost
+**~$0.41 total** (~$0.002 Fetch + ~$0.41 Claude across Summarize/Draft Post for all 37 themes).
+Real spend, not a projection, though not directly scale-comparable to the per-component estimates
+above (one topic/one run vs. their assumed 5-topic/30-run-per-month baseline) — kept here as a data
+point to weigh the estimate against, not a replacement for it.
+
 A running cost ledger (`src/utils/cost_tracker.py`) tracks cumulative spend against the $50 total,
 with an explicit reassess-and-possibly-downgrade checkpoint at the week-3 posting-mode switch
 rather than an open-ended commitment to the pricier model. Full reasoning:
