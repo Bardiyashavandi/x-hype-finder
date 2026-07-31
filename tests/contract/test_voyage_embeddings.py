@@ -26,9 +26,7 @@ def _response(status_code=200, json_body=None, text_body=""):
 
 def test_request_shape_sends_model_input_and_bearer_auth():
     session = MagicMock()
-    session.post.return_value = _response(
-        200, {"data": [{"index": 0, "embedding": [0.1, 0.2]}]}
-    )
+    session.post.return_value = _response(200, {"data": [{"index": 0, "embedding": [0.1, 0.2]}]})
 
     get_embeddings(["hello"], api_key="test-key", session=session)
 

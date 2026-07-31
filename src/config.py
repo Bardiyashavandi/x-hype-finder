@@ -102,9 +102,7 @@ def _env_namespace(x_account_handle: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", x_account_handle).strip("_").upper()
 
 
-def load_x_credentials_for_user(
-    user: "User", *, env: dict[str, str] | None = None
-) -> XCredentials:
+def load_x_credentials_for_user(user: User, *, env: dict[str, str] | None = None) -> XCredentials:
     """Load `user`'s own X posting credentials from per-user-namespaced env
     vars — `X_API_KEY__<HANDLE>`, `X_API_SECRET__<HANDLE>`,
     `X_ACCESS_TOKEN__<HANDLE>`, `X_ACCESS_TOKEN_SECRET__<HANDLE>`, where

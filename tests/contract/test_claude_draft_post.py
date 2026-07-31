@@ -170,7 +170,9 @@ class TestLengthCorrectionLoop:
         compliant_text = "A properly sized post about the new agent framework."
         client = MagicMock()
         client.messages.create.side_effect = [
-            _response(content=[_tool_use_block(draft_text=over_length_text, tool_use_id="toolu_1")]),
+            _response(
+                content=[_tool_use_block(draft_text=over_length_text, tool_use_id="toolu_1")]
+            ),
             _response(content=[_tool_use_block(draft_text=compliant_text, tool_use_id="toolu_2")]),
         ]
 
@@ -214,14 +216,20 @@ class TestLengthCorrectionLoop:
                 input_tokens=100,
                 output_tokens=50,
             ),
-            _response(content=[_tool_use_block(draft_text="Fits fine.")], input_tokens=150, output_tokens=20),
+            _response(
+                content=[_tool_use_block(draft_text="Fits fine.")],
+                input_tokens=150,
+                output_tokens=20,
+            ),
         ]
 
         generate_draft_post(_input(), api_key=API_KEY, model=MODEL, client=client)
 
         assert recorded == [(MODEL, 100, 50), (MODEL, 150, 20)]
 
-    def test_still_over_length_after_all_correction_attempts_raises_and_is_not_dropped_silently(self):
+    def test_still_over_length_after_all_correction_attempts_raises_and_is_not_dropped_silently(
+        self,
+    ):
         """Failure must be loud (DraftPostError raised with the final overage
         in its message) so the orchestrator's except-block explicitly logs
         and skips the theme's draft — as opposed to generate_draft_post ever
@@ -248,7 +256,9 @@ class TestLengthCorrectionLoop:
         budget."""
         client = MagicMock()
         client.messages.create.side_effect = [
-            _response(content=[_tool_use_block(draft_text="x" * (281 + i), tool_use_id=f"toolu_{i}")])
+            _response(
+                content=[_tool_use_block(draft_text="x" * (281 + i), tool_use_id=f"toolu_{i}")]
+            )
             for i in range(10)
         ]
 
