@@ -54,7 +54,8 @@ from src.notify.email import send_digest_completion_notification
 from src.pipeline.baseline import prune_source_posts_for_topic, write_baseline_snapshot
 from src.pipeline.cluster import ThemeCandidate, cluster_posts
 from src.pipeline.detect import DetectResult, detect_spike
-from src.pipeline.fetch import FetchErrorKind, RawPost, fetch_topic_posts
+from src.pipeline.fetch import FetchErrorKind, RawPost
+from src.pipeline.fetch_provider import get_fetch_provider
 from src.pipeline.filter import FilteredPost, filter_posts
 from src.pipeline.rank import rank_themes
 from src.posting.bio_check import build_x_client
@@ -204,7 +205,7 @@ def _run_topic_pipeline(
     x_client: tweepy.Client,
     log,
 ) -> tuple[DigestTopicResult, list[Theme]]:
-    fetch_result = fetch_topic_posts(topic.name, topic.x_handles, api_key=config.twitterapi_io_key)
+    fetch_result = get_fetch_provider()(topic.name, topic.x_handles)
 
     if not fetch_result.ok:
         outcome = (

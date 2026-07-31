@@ -10,9 +10,15 @@ default and does not fail fast — it is a runtime-configurable setting read by
 Summarize/Draft Post (T040/T056), sourced here so neither module hardcodes a
 model name (research.md §3, /speckit-analyze finding E1).
 
-`Config` holds only the credentials this app's own service accounts use
-(TwitterAPI.io read access, the Claude API, Resend) — these are shared across
-every user's run because they belong to the app, not to a user. X OAuth
+`Config` holds only the credentials this app's own service accounts use (the
+Claude API, Resend) — these are shared across every user's run because they
+belong to the app, not to a user. `twitterapi_io_key` is a legacy field kept
+for backward compatibility with existing callers that construct `Config`
+directly; the Fetch provider actually in use is resolved independently by
+`src.pipeline.fetch_provider.get_fetch_provider`, which reads
+`FETCH_PROVIDER` and that provider's own key (`TWITTERAPI_IO_KEY` or
+`TWITTERAPIS_COM_KEY`) straight from the environment, so neither is required
+here. X OAuth
 posting credentials are different: each user posts as their *own* X account
 (`User.x_account_handle`, data-model.md), so those live in per-user-namespaced
 env vars and are loaded separately via `load_x_credentials_for_user` (tasks.md
@@ -35,7 +41,6 @@ if TYPE_CHECKING:
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-5"
 
 _REQUIRED_CREDENTIAL_VARS = (
-    "TWITTERAPI_IO_KEY",
     "ANTHROPIC_API_KEY",
     "RESEND_API_KEY",
 )
@@ -47,7 +52,7 @@ class ConfigError(RuntimeError):
 
 @dataclass(frozen=True)
 class Config:
-    twitterapi_io_key: str
+    twitterapi_io_key: str  # legacy, not read by any Fetch call site — see module docstring
     anthropic_api_key: str
     resend_api_key: str
     claude_model: str
@@ -74,7 +79,7 @@ def load_config(*, env: dict[str, str] | None = None) -> Config:
         )
 
     return Config(
-        twitterapi_io_key=env["TWITTERAPI_IO_KEY"],
+        twitterapi_io_key=env.get("TWITTERAPI_IO_KEY", ""),
         anthropic_api_key=env["ANTHROPIC_API_KEY"],
         resend_api_key=env["RESEND_API_KEY"],
         claude_model=env.get("XHF_CLAUDE_MODEL", DEFAULT_CLAUDE_MODEL),

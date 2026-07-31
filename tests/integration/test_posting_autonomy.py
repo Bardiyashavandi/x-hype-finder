@@ -129,7 +129,7 @@ def _hermetic_pipeline(monkeypatch):
 
 
 def _fetch_stub(posts: list[RawPost]):
-    def fake(name, x_handles, *, api_key):
+    def fake(name, x_handles, **kwargs):
         return FetchResult(posts=posts, error=None)
 
     return fake
@@ -156,7 +156,7 @@ def test_manual_period_holds_every_draft_regardless_of_confidence(db_session, mo
     user = _seed_user(db_session)
     topic = _seed_topic(db_session, user)
     monkeypatch.setattr(
-        orchestrator_module, "fetch_topic_posts", _fetch_stub(_high_and_low_posts())
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub(_high_and_low_posts())
     )
     monkeypatch.setattr(orchestrator_module, "build_x_client", lambda config: None)
 
@@ -237,7 +237,7 @@ def test_threshold_routing_publishes_at_or_above_and_holds_below(db_session, mon
     db_session.commit()
 
     monkeypatch.setattr(
-        orchestrator_module, "fetch_topic_posts", _fetch_stub(_high_and_low_posts())
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub(_high_and_low_posts())
     )
     x_client = _StubXClient()
     monkeypatch.setattr(orchestrator_module, "build_x_client", lambda config: x_client)
@@ -280,7 +280,9 @@ def test_jitter_gate_prevents_two_high_confidence_drafts_publishing_simultaneous
         ],
     )
     monkeypatch.setattr(
-        orchestrator_module, "fetch_topic_posts", _fetch_stub(two_high_confidence_posts)
+        orchestrator_module,
+        "get_fetch_provider",
+        lambda **_: _fetch_stub(two_high_confidence_posts),
     )
     x_client = _StubXClient()
     monkeypatch.setattr(orchestrator_module, "build_x_client", lambda config: x_client)
@@ -305,7 +307,9 @@ def test_publish_failure_after_clearing_threshold_is_surfaced_not_dropped(db_ses
     db_session.commit()
 
     high_only_posts = [_post(f"high-{i}", f"HIGH: post {i} about AAPL") for i in range(4)]
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub(high_only_posts))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub(high_only_posts)
+    )
     x_client = _StubXClient(should_fail=True)
     monkeypatch.setattr(orchestrator_module, "build_x_client", lambda config: x_client)
 
@@ -327,7 +331,7 @@ def test_mid_cycle_switch_never_retroactively_publishes_prior_manual_drafts(
     user = _seed_user(db_session)
     topic = _seed_topic(db_session, user)
     monkeypatch.setattr(
-        orchestrator_module, "fetch_topic_posts", _fetch_stub(_high_and_low_posts())
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub(_high_and_low_posts())
     )
     monkeypatch.setattr(orchestrator_module, "build_x_client", lambda config: _StubXClient())
 
@@ -366,7 +370,9 @@ def test_kill_switch_forces_manual_hold_even_in_autonomous_mode(db_session, monk
     db_session.commit()
 
     high_only_posts = [_post(f"high-{i}", f"HIGH: post {i} about AAPL") for i in range(4)]
-    monkeypatch.setattr(orchestrator_module, "fetch_topic_posts", _fetch_stub(high_only_posts))
+    monkeypatch.setattr(
+        orchestrator_module, "get_fetch_provider", lambda **_: _fetch_stub(high_only_posts)
+    )
     x_client = _StubXClient()
     monkeypatch.setattr(orchestrator_module, "build_x_client", lambda config: x_client)
 
