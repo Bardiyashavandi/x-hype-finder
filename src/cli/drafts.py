@@ -122,7 +122,10 @@ def main(argv: list[str] | None = None) -> int:
 
     mark_parser = subparsers.add_parser(
         "mark-published",
-        help="Record that you already posted a held_manual draft to X yourself. Does NOT post anything.",
+        help=(
+            "Record that you already posted a held_manual draft to X yourself. Does NOT "
+            "post anything."
+        ),
         description=(
             "Record that a held_manual draft was already posted to X by you, manually. "
             "This command does NOT call the X API and does NOT post anything on your "
@@ -165,7 +168,10 @@ def main(argv: list[str] | None = None) -> int:
 
                 pending = _draft_for_user(session, user.id, draft_id)
                 if pending is None:
-                    print(f"Error: No draft found with id {draft_id} for this user.", file=sys.stderr)
+                    print(
+                        f"Error: No draft found with id {draft_id} for this user.",
+                        file=sys.stderr,
+                    )
                     return 1
                 if pending.status != DraftPostStatus.HELD_MANUAL:
                     print(
