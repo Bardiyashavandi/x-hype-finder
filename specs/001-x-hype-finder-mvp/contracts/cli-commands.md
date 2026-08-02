@@ -76,7 +76,13 @@ process is invoked per-user, scoped by that user's local credentials/config.
   window, or reviews anything `held_below_threshold` / `publish_failed` after the switch
   (FR-019).
 
-## `drafts mark-published <draft-id>`
+## `drafts mark-published <draft-id> [--yes]`
 
 - **Effect**: records that the user manually published a `held_manual` draft themselves on X;
-  sets `status = published_manual`, `published_at = now()`.
+  sets `status = published_manual`, `published_at = now()`. **Does NOT call the X API and does
+  NOT post anything** — there is no automated posting path for manually-held drafts by design
+  (see `src/posting/publish.py` for the only code path that actually posts). Only run this after
+  the content is genuinely live on X.
+- **Confirmation**: prints the draft text and requires typing `yes` at an interactive prompt
+  before recording anything, since there is no way to verify a manual post actually happened.
+  `--yes` skips the prompt for scripting, but still asserts the draft was already posted.
