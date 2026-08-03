@@ -18,6 +18,7 @@ from sqlalchemy import Select, select
 from src.models.digest import Digest
 from src.models.digest_topic_result import DigestTopicResult
 from src.models.draft_post import DraftPost
+from src.models.evaluation_label import EvaluationLabel
 from src.models.posting_mode import PostingMode
 from src.models.source_post import SourcePost
 from src.models.theme import Theme
@@ -72,6 +73,11 @@ def scoped_select(model: type[ModelT], user_id: uuid.UUID) -> Select:
 
     if model is User:
         return stmt.where(User.id == user_id)
+
+    if model is EvaluationLabel:
+        # Owned by whoever labeled it, not by whoever owns the target row it
+        # judges (EvaluationLabel.target_id has no FK — see its model docstring).
+        return stmt.where(EvaluationLabel.labeled_by_user_id == user_id)
 
     if model in _DIRECT_OWNERSHIP:
         return stmt.where(model.user_id == user_id)
