@@ -220,6 +220,10 @@ python -m src.cli.posting kill-switch on
 python -m src.cli.drafts list --status held_manual
 python -m src.cli.drafts mark-published <draft-id>
 
+# Human-in-the-loop evaluation (Filter/Detect/Cluster/Summarize/Draft Post/Digest)
+python -m src.cli.eval label digest --count 10
+python -m src.cli.eval report --stage digest         # SC-011 KPI
+
 # Scheduler (long-lived process — runs scheduled digests + retention sweep for every user)
 python -m src.cli.scheduler run
 ```

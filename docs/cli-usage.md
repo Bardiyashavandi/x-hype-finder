@@ -202,6 +202,54 @@ python -m src.cli.drafts mark-published <draft-id>
 
 ---
 
+## `eval`
+
+Human-in-the-loop evaluation for every judgment-making pipeline stage —
+Filter, Detect, Cluster, Summarize, Draft Post, Digest — backed by one shared
+`EvaluationLabel` table rather than a separate table per stage. Like every
+other command here, both sampling and reporting are scoped to the current
+user (FR-015): labeling as one user never counts against, or shows up in,
+another user's report.
+
+### `eval label <stage> [--count N]`
+
+Samples up to `N` (default 5) real, unlabeled items for `stage` — items you
+haven't already labeled for that stage yourself — and prompts interactively
+for a label per item, showing the same context a human reviewer needs:
+
+| stage       | samples from        | shows                                             | label       |
+|-------------|----------------------|----------------------------------------------------|-------------|
+| `filter`    | `SourcePost`         | post text, author, Filter's decision                | correct/incorrect |
+| `detect`    | `Theme`               | is_spike, spike_ratio, example posts                | correct/incorrect |
+| `cluster`   | `Theme`               | member posts (was the grouping sensible?)           | correct/incorrect |
+| `summarize` | `Theme`               | summary, rationale, confidence_score                | 1-5 |
+| `draft`     | `DraftPost`           | draft_text + parent theme's summary/rationale       | 1-5 |
+| `digest`    | `Digest`              | run type/status + per-topic outcomes and themes     | 1-5 (SC-011 KPI) |
+
+At each prompt: `y`/`n` (binary stages) or `1`-`5` (rated stages), plus
+`s` to skip the current item (leaves it unlabeled) or `q` to end the
+session early. Each label is committed immediately, so ending the session
+early (including via Ctrl+D/EOF) never loses labels already recorded.
+
+```sh
+python -m src.cli.eval label filter
+python -m src.cli.eval label digest --count 10
+```
+
+### `eval report [--stage <stage>]`
+
+Prints accuracy % (binary stages) or average rating (rated stages) across
+every label *you've* recorded so far, one line per stage. `--stage` narrows
+to a single stage. A stage with no labels yet prints `no labels yet` rather
+than being omitted.
+
+```sh
+python -m src.cli.eval report
+python -m src.cli.eval report --stage digest   # SC-011 KPI
+```
+
+---
+
 ## `scheduler`
 
 Unlike the other command groups, `scheduler` doesn't act on one user's data and

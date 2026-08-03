@@ -7,6 +7,7 @@ the complete schema regardless of which individual model module was imported.
 from src.models.digest import Digest, DigestRunType, DigestStatus
 from src.models.digest_topic_result import DigestTopicOutcome, DigestTopicResult
 from src.models.draft_post import DraftPost, DraftPostStatus
+from src.models.evaluation_label import EvalStage, EvaluationLabel
 from src.models.posting_mode import PostingMode, PostingModeValue
 from src.models.source_post import FilterOutcome, SourcePost
 from src.models.theme import Theme
@@ -29,6 +30,8 @@ __all__ = [
     "Theme",
     "DraftPost",
     "DraftPostStatus",
+    "EvaluationLabel",
+    "EvalStage",
     "PostingMode",
     "PostingModeValue",
 ]
