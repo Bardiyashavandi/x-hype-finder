@@ -12,6 +12,7 @@ short, ranked, evidence-backed digest of what's actually gaining traction and wh
 
 - [About The Project](#about-the-project)
 - [Architecture](#architecture)
+- [Algorithms](#algorithms)
 - [Built With](#built-with)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
@@ -127,6 +128,139 @@ Stage by stage:
   validation period, regardless of confidence. After that, an explicit, reversible toggle enables
   confidence-gated autonomous posting, safeguarded by a live "automated" bio-label check, jittered
   timing, a 5-posts/24h cap, and a kill switch.
+
+## Algorithms
+
+The three stages that actually decide what's noise, what's a spike, and what's one story rather
+than ten are all deterministic — no LLM judgment anywhere in this section (Constitution Principle
+I). This is the logic behind them, not just the boxes in the diagram above.
+
+### Filter — Bot/Noise Detection (`src/pipeline/filter.py`)
+
+**Problem:** a raw fetch for any active topic includes bot amplification, engagement farming, and
+spam alongside genuine posts. Deciding "bot or not" per post needs to be cheap (it runs on every
+fetched post, every run) but still catch coordinated behavior a single post's metadata can't reveal
+on its own — so it's split into two tiers, with the expensive tier gated behind the cheap one.
+
+**Tier 1 — rule-based composite score, 0-100** (`score_tier1`). Each post starts at 0 and accumulates
+points from independent, additive signals:
+
+| Signal | Condition | Points |
+|---|---|---|
+| New account | `account_age_days < 30` | +20 |
+| Suspicious follow ratio | `followers < 50` **and** `following > max(followers, 1) × 10` | +20 |
+| High posting velocity | `post_frequency > 50`/day | +20 |
+| Duplicate text | ≥50% of other posts in the same batch are ≥0.9 similar (`SequenceMatcher` ratio, link-stripped/lowercased) | +25 |
+| Link-heavy | URL characters ≥50% of post length | +10 |
+| Spam pattern | regex match on `dm me`, `guaranteed profit(s)`, `\d{2,}x gains?`, `free airdrop`, follow-back bait, etc. | +25 |
+
+The composite score is capped at 100 and bucketed:
+
+```
+score >= 70   → clear_exclude
+score <= 20   → clear_keep
+otherwise     → ambiguous          (escalated to Tier 2)
+```
+
+**Tier 2 — embedding-based coordinated-content check** (`apply_tier2`), run *only* over Tier 1's
+`ambiguous` posts — clear-keep and clear-exclude posts never pay for an embedding call at all. This
+catches what Tier 1's per-post metadata structurally can't: near-duplicate content posted by
+*distinct* accounts in a tight time window, a signature of coordinated amplification a single
+post's own metadata looks perfectly clean under. Concretely: for each ambiguous post, embed it and
+every other post in the batch, and flag it `excluded_deeper_check` if ≥2 *distinct* authors posted
+content ≥0.92 cosine-similar within a 2-hour window. If no coordination signature is found, it falls
+back to a stricter composite threshold (≥50, versus Tier 1's own 70) rather than defaulting to keep —
+an ambiguous post that fails both checks is still excluded, not given the benefit of the doubt.
+
+No post is ever silently dropped — every post gets a `filter_outcome` (`kept` /
+`excluded_rule` / `excluded_deeper_check`) persisted on `SourcePost`, so a filtered-out post is
+still auditable via `digest show --full`, not erased from the record.
+
+**Why two tiers instead of one ML classifier or a single embedding pass over everything:** a
+trained classifier needs labeled bot/not-bot data this project doesn't have and can't audit as
+easily as an explicit rule list; running embeddings over *every* post regardless of how obviously
+clean or spammy it is would multiply embedding-provider cost and latency for zero marginal signal
+on the cases Tier 1 already resolves confidently. Gating Tier 2 behind Tier 1's `ambiguous` bucket
+means the expensive check only runs where a cheap rule genuinely can't decide.
+
+### Detect — Spike Detection (`src/pipeline/detect.py`)
+
+**Problem:** decide whether a topic's current filtered post volume is a genuine spike in interest —
+compared strictly to *that topic's own* trailing baseline, never another topic's — without either
+drowning in false positives on quiet topics or missing real trends on already-busy ones.
+
+The naive approach — flag a spike at a fixed multiple of the baseline mean (e.g. "current ≥ 3×
+baseline") — is miscalibrated across volume regimes, because count data's variance scales with its
+mean (a Poisson-like property): a flat ratio is far too loose for a low-volume topic, where ordinary
+day-to-day noise clears it trivially, and far too tight for a high-volume topic, where a real
+emerging trend may never reach it. This is the same reasoning behind established
+seasonal/statistical anomaly-detection approaches (e.g. Twitter's own Seasonal-Hybrid ESD work),
+which likewise reject a fixed threshold in favor of bounds that adapt to a series' own variance
+rather than one constant applied uniformly.
+
+`detect_spike` instead flags a spike when current activity clears the baseline mean by
+**`K_SIGMA` (2.5) effective standard deviations**:
+
+```
+is_spike = current_count >= baseline_mean + K_SIGMA * sigma_eff
+
+sigma_eff = max(
+    baseline_stdev,          # the trailing window's own population stdev
+    sqrt(baseline_mean),     # Poisson noise floor — variance scales with the mean
+    MIN_SIGMA_FLOOR,         # 1.0 — guards near-zero-variance baselines (e.g. flat at 0-1/day)
+)
+```
+
+`baseline_mean`/`baseline_stdev` are computed over a trailing 7-day window of `TopicBaselineSnapshot`
+rows, excluding the current day itself. Every newly tracked topic also serves a **7-day observation
+period** (`Topic.observation_period_active`) during which `is_spike` is unconditionally `False`
+regardless of activity — there's no honest baseline yet to compare against. `spike_ratio`
+(`current ÷ baseline_mean`) is still computed and reported downstream as a magnitude signal even
+when it isn't what decides `is_spike`.
+
+**Worked example** (both cases from `tests/unit/test_detect.py`, same `K_SIGMA=2.5`):
+
+- **Low-volume topic**, baseline mean = 1 post/day, current = 3 (a flat 3× move). Under a fixed
+  3× rule this registers as a spike (3 ÷ 1 = 3.0 ≥ 3.0) — but at this volume, 3 posts in a day is
+  unremarkable noise. `sigma_eff = max(0, √1, 1.0) = 1.0`, so the threshold is `1 + 2.5×1 = 3.5`;
+  current = 3 falls short → **not a spike**.
+- **High-volume topic**, baseline mean = 1000 posts/day, current = 1100 (a modest 1.1× move). Under
+  the same fixed 3× rule this would need 3000 posts to register at all — but a sustained 10% lift on
+  1000/day is a real signal. `sigma_eff = max(0, √1000, 1.0) ≈ 31.6`, so the threshold is
+  `1000 + 2.5×31.6 ≈ 1079`; current = 1100 clears it → **is a spike**.
+
+Same `K_SIGMA`, same formula, correct call in both directions — because the bound itself scales
+with the topic's own baseline variance instead of being fixed.
+
+### Cluster — Thematic Grouping (`src/pipeline/cluster.py`)
+
+**Problem:** turn a flat list of Filter-kept posts into a handful of coherent stories — a digest
+of 40 individual posts is unreadable, but a digest of 3-5 *themes* isn't, provided the grouping
+itself is honest about what's actually related.
+
+`cluster_posts` embeds every kept post's text and runs scikit-learn's `AgglomerativeClustering`
+over the embeddings with **cosine distance** and **average linkage**, using a **distance threshold**
+rather than a fixed cluster count:
+
+```
+distance_threshold = 1.0 - CLUSTER_SIMILARITY_THRESHOLD   # 1.0 - 0.75 = 0.25
+AgglomerativeClustering(n_clusters=None, distance_threshold=0.25, metric="cosine", linkage="average")
+```
+
+Posts land in the same cluster only once their pairwise cosine similarity clears **0.75**; nothing
+else determines how many clusters come out — `n_clusters=None` explicitly lets the data decide,
+rather than forcing a pre-chosen number of themes (as k-means would require) onto whatever content
+actually showed up. A post with no sufficiently similar peers becomes a **singleton cluster of
+one** rather than being dropped or force-merged into an unrelated group — Cluster never excludes a
+post, only Filter does.
+
+**Real example:** a live run against the broad, handle-less topic "AI agents" (`docs/PRD_X_Hype_Finder.md`,
+2026-07-31) fetched 40 posts and produced **37 themes** — almost entirely singletons. That's the
+correct outcome, not a clustering failure: a keyword that broad pulls in posts that mention "AI
+agents" while discussing genuinely unrelated specifics, so they simply aren't 0.75-similar to each
+other, and the threshold correctly declines to force them into shared stories they don't belong to.
+A narrower, handle-anchored topic sees proportionally larger clusters, since its posts are more
+likely to actually be repeating or reacting to the same specific thing.
 
 ## Built With
 
