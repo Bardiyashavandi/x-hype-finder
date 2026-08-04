@@ -16,7 +16,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.session import Base
@@ -43,3 +43,10 @@ class SourcePost(Base):
     filter_outcome: Mapped[FilterOutcome] = mapped_column(Enum(FilterOutcome), nullable=False)
     theme_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("themes.id"), nullable=True)
     is_example: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Author metadata Filter Tier 1 scored this post against (src/pipeline/filter.py),
+    # persisted alongside filter_outcome for audit. Nullable: rows written before this
+    # column existed have no value to backfill.
+    followers_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    following_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    account_age_days: Mapped[float | None] = mapped_column(Float, nullable=True)
+    post_frequency: Mapped[float | None] = mapped_column(Float, nullable=True)

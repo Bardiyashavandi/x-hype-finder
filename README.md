@@ -174,7 +174,10 @@ an ambiguous post that fails both checks is still excluded, not given the benefi
 
 No post is ever silently dropped — every post gets a `filter_outcome` (`kept` /
 `excluded_rule` / `excluded_deeper_check`) persisted on `SourcePost`, so a filtered-out post is
-still auditable via `digest show --full`, not erased from the record.
+still auditable via `digest show --full`, not erased from the record. The author metadata Tier 1
+scored it against (`followers_count`, `following_count`, `account_age_days`, `post_frequency`) is
+persisted on the same row alongside the outcome, for both kept and excluded posts — nullable, since
+rows written before these columns existed have nothing to backfill.
 
 **Why two tiers instead of one ML classifier or a single embedding pass over everything:** a
 trained classifier needs labeled bot/not-bot data this project doesn't have and can't audit as
