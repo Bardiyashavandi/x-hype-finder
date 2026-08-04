@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import enum
 import time
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import requests
 
+from src.pipeline.query_builder import build_search_query
 from src.utils.cost_tracker import record_twitterapi_io_read
 from src.utils.retry import retry_with_backoff
 
@@ -101,15 +101,6 @@ def _parse_twitter_date(value: str) -> datetime:
     return datetime.strptime(value, _TWITTER_DATE_FORMAT)
 
 
-def _build_query(
-    topic_name: str, x_handles: Iterable[str], since: datetime, until: datetime
-) -> str:
-    terms = [f'"{topic_name}"', *(f"from:{handle.lstrip('@')}" for handle in x_handles)]
-    keyword_clause = " OR ".join(terms)
-    since_ts, until_ts = int(since.timestamp()), int(until.timestamp())
-    return f"({keyword_clause}) since_time:{since_ts} until_time:{until_ts}"
-
-
 def _parse_tweet(raw: dict) -> RawPost:
     author = raw["author"]
     posted_at = _parse_twitter_date(raw["createdAt"])
@@ -181,7 +172,7 @@ def fetch_topic_posts(
     until = until or datetime.now(UTC)
     since = since or (until - DEFAULT_LOOKBACK)
     session = session or requests.Session()
-    query = _build_query(topic_name, x_handles, since, until)
+    query = build_search_query(topic_name, x_handles, since, until)
 
     posts: list[RawPost] = []
     cursor = ""
