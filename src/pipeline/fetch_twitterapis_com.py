@@ -4,10 +4,11 @@
 
 Selected via `FETCH_PROVIDER=twitterapis_com` (src/pipeline/fetch_provider.py).
 Mirrors fetch.py's shape (`fetch_topic_posts` returning the same `FetchResult`/
-`RawPost`/`FetchError` types, never raising out to the caller) and its
-advanced-search query syntax (confirmed identical `since_time:`/`until_time:`
-epoch operators via docs.twitterapis.com/blogs/twitter-advanced-search-operators),
-but differs where the providers genuinely differ:
+`RawPost`/`FetchError` types, never raising out to the caller) and shares its
+advanced-search query construction via `src/pipeline/query_builder.py`
+(confirmed identical `since_time:`/`until_time:` epoch operators via
+docs.twitterapis.com/blogs/twitter-advanced-search-operators), but differs
+where the providers genuinely differ:
 
 - Auth is `Authorization: Bearer <key>`, not TwitterAPI.io's `X-API-Key`.
 - The response embeds full author metadata (followers_count, following_count,
@@ -27,12 +28,12 @@ but differs where the providers genuinely differ:
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 import requests
 
 from src.pipeline.fetch import AuthorMetadata, FetchError, FetchErrorKind, FetchResult, RawPost
+from src.pipeline.query_builder import build_search_query
 from src.utils.cost_tracker import record_twitterapis_com_read
 from src.utils.retry import retry_with_backoff
 
@@ -71,15 +72,6 @@ class FetchAPIError(Exception):
 
 def _parse_twitter_date(value: str) -> datetime:
     return datetime.strptime(value, _TWITTER_DATE_FORMAT)
-
-
-def _build_query(
-    topic_name: str, x_handles: Iterable[str], since: datetime, until: datetime
-) -> str:
-    terms = [f'"{topic_name}"', *(f"from:{handle.lstrip('@')}" for handle in x_handles)]
-    keyword_clause = " OR ".join(terms)
-    since_ts, until_ts = int(since.timestamp()), int(until.timestamp())
-    return f"({keyword_clause}) since_time:{since_ts} until_time:{until_ts}"
 
 
 def _parse_tweet(raw: dict) -> RawPost:
@@ -147,7 +139,7 @@ def fetch_topic_posts(
     until = until or datetime.now(UTC)
     since = since or (until - DEFAULT_LOOKBACK)
     session = session or requests.Session()
-    query = _build_query(topic_name, x_handles, since, until)
+    query = build_search_query(topic_name, x_handles, since, until)
 
     posts: list[RawPost] = []
     cursor = ""
