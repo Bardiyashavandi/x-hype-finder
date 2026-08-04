@@ -222,6 +222,59 @@ def theme_source_posts(session, theme: Theme):
     return session.query(SourcePost).filter_by(theme_id=theme.id).all()
 
 
+def test_author_metadata_is_persisted_on_source_post_rows_for_kept_and_excluded_posts(
+    db_session, monkeypatch
+):
+    """The AuthorMetadata Filter Tier 1 scores each post against
+    (src/pipeline/filter.py) used to be discarded after use — it must now
+    land on the persisted SourcePost row alongside filter_outcome, for both
+    a kept post and one Tier 1 excludes outright."""
+    from src.models.source_post import SourcePost
+
+    user = _seed_user(db_session)
+    topic = _seed_topic(db_session, user, "META", first_tracked_days_ago=30)
+    _seed_baseline(db_session, topic, daily_count=5)
+
+    kept_post = _clean_post("kept-1", "Distinct post about META")
+    bot_post = RawPost(
+        x_post_id="bot-1",
+        author_handle="bot_1",
+        text="DM me for guaranteed profits on this trade",
+        posted_at=NOW,
+        author_metadata=AuthorMetadata(
+            account_age_days=3, followers_count=5, following_count=800, post_frequency=200.0
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"META": FetchResult(posts=[kept_post, bot_post], error=None)}),
+    )
+    monkeypatch.setattr(orchestrator_module, "cluster_posts", _single_group_cluster)
+    monkeypatch.setattr(orchestrator_module, "summarize_theme", _fake_summarize_by_spike())
+
+    run_digest(db_session, user, [topic], run_type=DigestRunType.ON_DEMAND, config=_config())
+
+    posts_by_id = {
+        sp.x_post_id: sp for sp in db_session.query(SourcePost).filter_by(topic_id=topic.id).all()
+    }
+    assert set(posts_by_id) == {"kept-1", "bot-1"}
+
+    kept_sp = posts_by_id["kept-1"]
+    assert kept_sp.filter_outcome == FilterOutcome.KEPT
+    assert kept_sp.followers_count == 5000
+    assert kept_sp.following_count == 500
+    assert kept_sp.account_age_days == pytest.approx(500)
+    assert kept_sp.post_frequency == pytest.approx(2.0)
+
+    bot_sp = posts_by_id["bot-1"]
+    assert bot_sp.filter_outcome != FilterOutcome.KEPT
+    assert bot_sp.followers_count == 5
+    assert bot_sp.following_count == 800
+    assert bot_sp.account_age_days == pytest.approx(3)
+    assert bot_sp.post_frequency == pytest.approx(200.0)
+
+
 def test_control_topic_is_not_falsely_flagged_as_a_spike(db_session, monkeypatch):
     user = _seed_user(db_session)
     topic = _seed_topic(db_session, user, "CONTROL", first_tracked_days_ago=30)
