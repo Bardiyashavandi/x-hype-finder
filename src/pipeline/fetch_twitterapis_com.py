@@ -15,6 +15,12 @@ where the providers genuinely differ:
   tweet_count, created_at) directly on each tweet's `author`, confirmed via a
   live test call (2026-07-31) after docs.twitterapis.com's own examples
   turned out to be trimmed/incomplete on this point.
+- Each tweet also carries its own engagement counts (reply_count,
+  retweet_count, favorite_count, quote_count, bookmark_count, view_count) —
+  `_parse_tweet` maps the five persisted on `SourcePost` (favorite_count as
+  `like_count`; bookmark_count has no column yet). TwitterAPI.io's response
+  (fetch.py) doesn't expose engagement counts, so `RawPost.engagement_metrics`
+  is always all-`None` for that provider.
 - Pagination cursor field is `next_cursor` + a `has_more` boolean (vs.
   TwitterAPI.io's `has_next_page`).
 - No fixed QPS cap (pay-per-call pricing; docs.twitterapis.com's rate-limits
@@ -32,7 +38,14 @@ from datetime import UTC, datetime, timedelta
 
 import requests
 
-from src.pipeline.fetch import AuthorMetadata, FetchError, FetchErrorKind, FetchResult, RawPost
+from src.pipeline.fetch import (
+    AuthorMetadata,
+    EngagementMetrics,
+    FetchError,
+    FetchErrorKind,
+    FetchResult,
+    RawPost,
+)
 from src.pipeline.query_builder import build_search_query
 from src.utils.cost_tracker import record_twitterapis_com_read
 from src.utils.retry import retry_with_backoff
@@ -91,6 +104,16 @@ def _parse_tweet(raw: dict) -> RawPost:
             followers_count=author.get("followers_count", 0),
             following_count=author.get("following_count", 0),
             post_frequency=post_frequency,
+        ),
+        # X's classic "favorite" naming is the like count; bookmark_count is
+        # also present on the response but isn't persisted (no SourcePost
+        # column for it — out of scope for now).
+        engagement_metrics=EngagementMetrics(
+            like_count=raw.get("favorite_count"),
+            retweet_count=raw.get("retweet_count"),
+            reply_count=raw.get("reply_count"),
+            quote_count=raw.get("quote_count"),
+            view_count=raw.get("view_count"),
         ),
     )
 

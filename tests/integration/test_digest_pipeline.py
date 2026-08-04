@@ -33,7 +33,14 @@ from src.models.user import User
 from src.pipeline import orchestrator as orchestrator_module
 from src.pipeline.cluster import ThemeCandidate
 from src.pipeline.cluster import cluster_posts as real_cluster_posts
-from src.pipeline.fetch import AuthorMetadata, FetchError, FetchErrorKind, FetchResult, RawPost
+from src.pipeline.fetch import (
+    AuthorMetadata,
+    EngagementMetrics,
+    FetchError,
+    FetchErrorKind,
+    FetchResult,
+    RawPost,
+)
 from src.pipeline.filter import filter_posts
 from src.pipeline.orchestrator import run_digest
 
@@ -273,6 +280,76 @@ def test_author_metadata_is_persisted_on_source_post_rows_for_kept_and_excluded_
     assert bot_sp.following_count == 800
     assert bot_sp.account_age_days == pytest.approx(3)
     assert bot_sp.post_frequency == pytest.approx(200.0)
+
+
+def test_engagement_metrics_are_persisted_on_source_post_rows_for_kept_and_excluded_posts(
+    db_session, monkeypatch
+):
+    """Same pattern as the author-metadata persistence test above: post-level
+    engagement counts (src/pipeline/fetch.py's EngagementMetrics, mapped from
+    the real API response in fetch_twitterapis_com.py) must land on the
+    persisted SourcePost row alongside filter_outcome, for both a kept post
+    and one Tier 1 excludes outright."""
+    from src.models.source_post import SourcePost
+
+    user = _seed_user(db_session)
+    topic = _seed_topic(db_session, user, "ENGAGE", first_tracked_days_ago=30)
+    _seed_baseline(db_session, topic, daily_count=5)
+
+    kept_post = RawPost(
+        x_post_id="kept-2",
+        author_handle="real_user",
+        text="Distinct post about ENGAGE",
+        posted_at=NOW,
+        author_metadata=AuthorMetadata(
+            account_age_days=500, followers_count=5000, following_count=500, post_frequency=2.0
+        ),
+        engagement_metrics=EngagementMetrics(
+            like_count=120, retweet_count=30, reply_count=8, quote_count=4, view_count=9000
+        ),
+    )
+    bot_post = RawPost(
+        x_post_id="bot-2",
+        author_handle="bot_2",
+        text="DM me for guaranteed profits on this trade",
+        posted_at=NOW,
+        author_metadata=AuthorMetadata(
+            account_age_days=3, followers_count=5, following_count=800, post_frequency=200.0
+        ),
+        engagement_metrics=EngagementMetrics(
+            like_count=1, retweet_count=0, reply_count=0, quote_count=0, view_count=50
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator_module,
+        "get_fetch_provider",
+        lambda **_: _fake_fetch({"ENGAGE": FetchResult(posts=[kept_post, bot_post], error=None)}),
+    )
+    monkeypatch.setattr(orchestrator_module, "cluster_posts", _single_group_cluster)
+    monkeypatch.setattr(orchestrator_module, "summarize_theme", _fake_summarize_by_spike())
+
+    run_digest(db_session, user, [topic], run_type=DigestRunType.ON_DEMAND, config=_config())
+
+    posts_by_id = {
+        sp.x_post_id: sp for sp in db_session.query(SourcePost).filter_by(topic_id=topic.id).all()
+    }
+    assert set(posts_by_id) == {"kept-2", "bot-2"}
+
+    kept_sp = posts_by_id["kept-2"]
+    assert kept_sp.filter_outcome == FilterOutcome.KEPT
+    assert kept_sp.like_count == 120
+    assert kept_sp.retweet_count == 30
+    assert kept_sp.reply_count == 8
+    assert kept_sp.quote_count == 4
+    assert kept_sp.view_count == 9000
+
+    bot_sp = posts_by_id["bot-2"]
+    assert bot_sp.filter_outcome != FilterOutcome.KEPT
+    assert bot_sp.like_count == 1
+    assert bot_sp.retweet_count == 0
+    assert bot_sp.reply_count == 0
+    assert bot_sp.quote_count == 0
+    assert bot_sp.view_count == 50
 
 
 def test_control_topic_is_not_falsely_flagged_as_a_spike(db_session, monkeypatch):

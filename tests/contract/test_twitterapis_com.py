@@ -60,12 +60,24 @@ def _tweet(
     *,
     created_at="Mon Jul 27 15:26:44 +0000 2026",
     author: dict | None = None,
+    reply_count=3,
+    retweet_count=7,
+    favorite_count=42,
+    quote_count=2,
+    bookmark_count=5,
+    view_count=1000,
 ) -> dict:
     return {
         "id": tweet_id,
         "text": text,
         "created_at": created_at,
         "author": author or _author(),
+        "reply_count": reply_count,
+        "retweet_count": retweet_count,
+        "favorite_count": favorite_count,
+        "quote_count": quote_count,
+        "bookmark_count": bookmark_count,  # not persisted — no SourcePost column yet
+        "view_count": view_count,
     }
 
 
@@ -122,6 +134,40 @@ def test_successful_response_parses_into_raw_posts_with_full_author_metadata():
     assert post.author_metadata.following_count == 0
     assert post.author_metadata.account_age_days > 0
     assert post.author_metadata.post_frequency > 0
+
+
+def test_successful_response_parses_into_raw_posts_with_engagement_metrics():
+    session = MagicMock()
+    session.get.return_value = _response(
+        200,
+        {
+            "tweets": [
+                _tweet(
+                    "123",
+                    "Hello world",
+                    reply_count=3,
+                    retweet_count=7,
+                    favorite_count=42,
+                    quote_count=2,
+                    bookmark_count=5,
+                    view_count=1000,
+                )
+            ],
+            "has_more": False,
+            "next_cursor": "",
+        },
+    )
+
+    result = fetch_topic_posts("AAPL", [], api_key=API_KEY, session=session)
+
+    assert result.ok
+    engagement = result.posts[0].engagement_metrics
+    # X's classic "favorite_count" naming is the like count.
+    assert engagement.like_count == 42
+    assert engagement.retweet_count == 7
+    assert engagement.reply_count == 3
+    assert engagement.quote_count == 2
+    assert engagement.view_count == 1000
 
 
 def test_pagination_follows_cursor_until_has_more_is_false():

@@ -177,7 +177,11 @@ No post is ever silently dropped — every post gets a `filter_outcome` (`kept` 
 still auditable via `digest show --full`, not erased from the record. The author metadata Tier 1
 scored it against (`followers_count`, `following_count`, `account_age_days`, `post_frequency`) is
 persisted on the same row alongside the outcome, for both kept and excluded posts — nullable, since
-rows written before these columns existed have nothing to backfill.
+rows written before these columns existed have nothing to backfill. Post-level engagement counts
+(`like_count`, `retweet_count`, `reply_count`, `quote_count`, `view_count`) are persisted the same
+way when the active Fetch provider exposes them — currently only `fetch_twitterapis_com.py`; the
+original `fetch.py` (TwitterAPI.io) client's response doesn't expose engagement counts, so those
+columns stay `null` for posts fetched through it.
 
 **Why two tiers instead of one ML classifier or a single embedding pass over everything:** a
 trained classifier needs labeled bot/not-bot data this project doesn't have and can't audit as

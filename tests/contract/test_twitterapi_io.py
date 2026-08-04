@@ -112,6 +112,27 @@ def test_successful_response_parses_into_raw_posts_with_author_metadata():
     assert post.author_metadata.post_frequency > 0
 
 
+def test_engagement_metrics_are_unmapped_for_this_provider():
+    """TwitterAPI.io's search response doesn't expose engagement counts
+    (unlike TwitterAPIs.com, tests/contract/test_twitterapis_com.py) — this
+    locks in that RawPost.engagement_metrics stays all-None here rather than
+    guessing at unverified field names (src/pipeline/fetch.py's
+    EngagementMetrics docstring)."""
+    session = MagicMock()
+    session.get.return_value = _response(
+        200, {"tweets": [_tweet("123", "Hello world")], "has_next_page": False, "next_cursor": ""}
+    )
+
+    result = fetch_topic_posts("AAPL", [], api_key=API_KEY, session=session)
+
+    engagement = result.posts[0].engagement_metrics
+    assert engagement.like_count is None
+    assert engagement.retweet_count is None
+    assert engagement.reply_count is None
+    assert engagement.quote_count is None
+    assert engagement.view_count is None
+
+
 def test_pagination_follows_cursor_until_last_page():
     session = MagicMock()
     session.get.side_effect = [

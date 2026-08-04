@@ -73,12 +73,37 @@ class AuthorMetadata:
 
 
 @dataclass(frozen=True)
+class EngagementMetrics:
+    """Post-level engagement counts, persisted on `SourcePost` for
+    auditability alongside `filter_outcome` (same pattern as `AuthorMetadata`).
+
+    All fields are optional: TwitterAPI.io's search response (this module)
+    doesn't expose engagement counts, so `_parse_tweet` below always builds
+    this with every field `None` rather than guessing at unverified field
+    names. Only `fetch_twitterapis_com.py`'s response currently populates
+    real values.
+    """
+
+    like_count: int | None
+    retweet_count: int | None
+    reply_count: int | None
+    quote_count: int | None
+    view_count: int | None
+
+
+_NO_ENGAGEMENT_METRICS = EngagementMetrics(
+    like_count=None, retweet_count=None, reply_count=None, quote_count=None, view_count=None
+)
+
+
+@dataclass(frozen=True)
 class RawPost:
     x_post_id: str
     author_handle: str
     text: str
     posted_at: datetime
     author_metadata: AuthorMetadata
+    engagement_metrics: EngagementMetrics = _NO_ENGAGEMENT_METRICS
 
 
 @dataclass(frozen=True)

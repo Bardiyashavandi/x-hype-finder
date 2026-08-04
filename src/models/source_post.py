@@ -50,3 +50,12 @@ class SourcePost(Base):
     following_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     account_age_days: Mapped[float | None] = mapped_column(Float, nullable=True)
     post_frequency: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Post-level engagement counts (src/pipeline/fetch.py's EngagementMetrics),
+    # persisted alongside filter_outcome for audit. Nullable: not every Fetch
+    # provider exposes these (TwitterAPI.io's response doesn't), and rows
+    # written before this column existed have no value to backfill.
+    like_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retweet_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reply_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quote_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    view_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

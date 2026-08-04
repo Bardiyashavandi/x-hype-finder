@@ -108,8 +108,10 @@ Renders a stored Digest, grouped by topic.
 - With `--full`: shows every underlying `SourcePost` for that topic — both the ones
   clustered into a Theme and the ones Filter excluded — each annotated with its
   `filter_outcome` (FR-016). The author metadata Filter Tier 1 scored the post against
-  (followers/following counts, account age, post frequency) is stored on the same row
-  but not yet rendered here — query `SourcePost` directly if you need it.
+  (followers/following counts, account age, post frequency) and its engagement counts
+  (likes, retweets, replies, quotes, views — when the active Fetch provider exposes them)
+  are stored on the same row but not yet rendered here — query `SourcePost` directly if
+  you need them.
 - `--topic <name>` scopes the output to a single topic within the digest, erroring
   clearly if the name doesn't match anything in that digest.
 - Always renders the topic's outcome explicitly — `no_significant_activity`,

@@ -431,6 +431,7 @@ def _select_example_post_ids(candidate: ThemeCandidate) -> set[str]:
 def _build_source_post(topic_id, digest_topic_result_id, filtered_post: FilteredPost) -> SourcePost:
     post: RawPost = filtered_post.post
     meta = post.author_metadata
+    engagement = post.engagement_metrics
     return SourcePost(
         topic_id=topic_id,
         digest_topic_result_id=digest_topic_result_id,
@@ -443,4 +444,9 @@ def _build_source_post(topic_id, digest_topic_result_id, filtered_post: Filtered
         following_count=meta.following_count,
         account_age_days=meta.account_age_days,
         post_frequency=meta.post_frequency,
+        like_count=engagement.like_count,
+        retweet_count=engagement.retweet_count,
+        reply_count=engagement.reply_count,
+        quote_count=engagement.quote_count,
+        view_count=engagement.view_count,
     )
