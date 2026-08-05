@@ -104,6 +104,79 @@ def test_spam_pattern_signal_fires():
     assert "spam_pattern" in result.reasons
 
 
+# --- wallet-solicitation/giveaway-bait regression tests ----------------------
+#
+# Anonymized from real eval-labeled examples (2026-08-05 digest review):
+# Tier 1 was consistently missing posts that ask readers to drop/comment/send
+# their wallet address for a fake airdrop/giveaway/prize, because no existing
+# _SPAM_PATTERNS phrase matched this wording and the posting accounts often
+# don't otherwise look suspicious by metadata alone.
+
+
+def test_wallet_solicitation_giveaway_bait_signal_fires_drop_variant():
+    posts = [_post("1", "Drop your $SOL wallet address below for a chance to win our giveaway!")]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
+
+
+def test_wallet_solicitation_giveaway_bait_signal_fires_comment_variant():
+    posts = [
+        _post("1", "Comment your wallet address for the airdrop, first 100 winners get 50 SOL")
+    ]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
+
+
+def test_wallet_solicitation_giveaway_bait_signal_fires_send_variant():
+    posts = [_post("1", "Send your wallet now, giveaway ends soon, 10 winners chosen daily")]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
+
+
+def test_wallet_mention_without_giveaway_word_does_not_fire():
+    # Ordinary crypto chatter mentioning a wallet + "send" shouldn't be
+    # mistaken for solicitation bait without a giveaway-adjacent word too.
+    posts = [_post("1", "Just sent some SOL from my wallet to Phantom, no issues at all")]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" not in result.reasons
+
+
+def test_airdrop_mention_without_solicit_verb_does_not_fire():
+    # "airdrop" contains the substring "drop" but must not satisfy the
+    # standalone \bdrop\b cue, and there's no ask to comment/send/drop a
+    # wallet here — this is legitimate discussion, not solicitation.
+    posts = [_post("1", "This project's new airdrop wallet-checker tool looks solid")]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" not in result.reasons
+
+
+def test_wallet_solicitation_alone_moves_clean_looking_account_out_of_clear_keep():
+    # Before this rule existed, a wallet-solicitation post from an
+    # established-looking account (old, normal follower ratio, normal
+    # velocity) scored 0 and was silently CLEAR_KEEP — exactly the miss
+    # eval labels flagged. It must now at least escalate to ambiguous.
+    posts = [_post("1", "Drop your wallet below for today's giveaway winners")]
+    result = score_tier1(posts)["1"]
+    assert result.decision != Tier1Decision.CLEAR_KEEP
+    assert "spam_pattern" in result.reasons
+
+
+def test_wallet_solicitation_combined_with_bot_like_metadata_is_clear_exclude():
+    posts = [
+        _post(
+            "1",
+            "Comment your wallet address now for a chance at our airdrop giveaway!",
+            account_age_days=3,
+            followers=20,
+            following=600,
+            post_frequency=100.0,
+        )
+    ]
+    result = score_tier1(posts)["1"]
+    assert result.decision == Tier1Decision.CLEAR_EXCLUDE
+    assert result.score >= 70
+
+
 def test_clear_exclude_when_many_signals_combine():
     posts = [
         _post(

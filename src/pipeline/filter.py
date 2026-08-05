@@ -53,7 +53,7 @@ _SCORE_SPAM_PATTERN = 25.0
 
 _URL_PATTERN = re.compile(r"https?://\S+")
 _SPAM_PATTERNS = tuple(
-    re.compile(pattern, re.IGNORECASE)
+    re.compile(pattern, re.IGNORECASE | re.DOTALL)
     for pattern in (
         r"\bdm me\b",
         r"\bclick (the )?link\b",
@@ -62,6 +62,14 @@ _SPAM_PATTERNS = tuple(
         r"\b\d{2,}x gains?\b",
         r"\bfree airdrop\b",
         r"\bfollow (me )?(and )?(i('ll)? )?follow back\b",
+        # Wallet-solicitation/giveaway-bait: real eval labels showed Tier 1
+        # consistently missing posts asking people to drop/comment/send their
+        # wallet address for a fake airdrop/giveaway/prize. No single exact
+        # phrase covers this — it's a co-occurrence of three separate cues
+        # (wallet + a solicit verb + a giveaway word), hence the lookaheads
+        # rather than one linear pattern like the phrases above.
+        r"(?=.*\bwallet\b)(?=.*\b(?:drop|comment|send)\b)"
+        r"(?=.*\b(?:airdrop|giveaway|winner(?:s)?)\b)",
     )
 )
 
