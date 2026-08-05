@@ -22,7 +22,9 @@ from src.agent.draft_post import DraftPostResult
 from src.agent.summarize import SummarizeInput, SummarizeResult
 from src.cli import digest as digest_cli
 from src.config import Config
-from src.models.digest import Digest
+from src.models.digest import Digest, DigestRunType, DigestStatus
+from src.models.digest_topic_result import DigestTopicOutcome, DigestTopicResult
+from src.models.theme import Theme
 from src.models.topic import Topic, TopicStatus
 from src.models.user import User
 from src.pipeline import orchestrator as orchestrator_module
@@ -88,6 +90,46 @@ def _seed_topic(session, user: User, name: str, *, first_tracked_days_ago: int =
     session.add(topic)
     session.flush()
     return topic
+
+
+def _seed_digest_with_themes(session, user: User, topic: Topic, confidences: list[int]) -> Digest:
+    """Directly build a completed Digest / DigestTopicResult(themes_present) /
+    one Theme per entry in `confidences` (rank in list order), bypassing the
+    pipeline entirely. The CONFIDENCE_DISPLAY_THRESHOLD filter (src/cli/
+    digest.py) is a pure display-layer read of `Theme.confidence_score`, so
+    it doesn't need a real run to exercise — just Theme rows with specific
+    scores."""
+    digest = Digest(
+        user_id=user.id,
+        run_type=DigestRunType.ON_DEMAND,
+        started_at=NOW,
+        completed_at=NOW,
+        status=DigestStatus.COMPLETED,
+    )
+    session.add(digest)
+    session.flush()
+
+    dtr = DigestTopicResult(
+        digest_id=digest.id, topic_id=topic.id, outcome=DigestTopicOutcome.THEMES_PRESENT
+    )
+    session.add(dtr)
+    session.flush()
+
+    for rank, confidence in enumerate(confidences, start=1):
+        session.add(
+            Theme(
+                digest_topic_result_id=dtr.id,
+                summary=f"Summary at confidence {confidence}",
+                rationale=f"Rationale at confidence {confidence}",
+                confidence_score=confidence,
+                is_spike=confidence >= 30,
+                spike_ratio=None,
+                cluster_post_count=5,
+                rank=rank,
+            )
+        )
+    session.flush()
+    return digest
 
 
 def _orthogonal_embed_fn(texts: list[str]) -> list[list[float]]:
@@ -283,3 +325,90 @@ def test_show_with_unknown_topic_name_is_rejected(db_session, monkeypatch, capsy
     assert exit_code == 1
     err = capsys.readouterr().err
     assert "NOPE" in err
+
+
+def test_default_view_hides_low_confidence_themes(db_session, monkeypatch, capsys):
+    user = _seed_user(db_session)
+    topic = _seed_topic(db_session, user, "AAPL")
+    # Chosen so no confidence value's digits are a prefix of another's (e.g.
+    # avoid 5/50) — otherwise a substring assertion like "confidence 5" would
+    # false-positive match inside "confidence 50".
+    digest = _seed_digest_with_themes(db_session, user, topic, [80, 55, 13, 2, 37])
+
+    exit_code = _run_cli(db_session, ["show", str(digest.id)], monkeypatch)
+    assert exit_code == 0
+    out = capsys.readouterr().out
+
+    # confidence >= CONFIDENCE_DISPLAY_THRESHOLD (20): shown.
+    assert "Summary at confidence 80" in out
+    assert "Summary at confidence 55" in out
+    assert "Summary at confidence 37" in out
+    # confidence < 20: hidden — this is a display-only filter, so the
+    # underlying Theme rows themselves are untouched (asserted separately
+    # below by re-reading them straight from the DB).
+    assert "Summary at confidence 13" not in out
+    assert "Summary at confidence 2" not in out
+
+    assert "2 additional low-confidence themes not shown — use --full to see everything." in out
+
+    # Display-only filter (not a delete/mutation): every Theme row is still
+    # in the DB regardless of what the default view chose to print.
+    dtr = db_session.execute(
+        select(DigestTopicResult).where(DigestTopicResult.digest_id == digest.id)
+    ).scalar_one()
+    stored_themes = (
+        db_session.execute(select(Theme).where(Theme.digest_topic_result_id == dtr.id))
+        .scalars()
+        .all()
+    )
+    assert sorted(t.confidence_score for t in stored_themes) == [2, 13, 37, 55, 80]
+
+
+def test_full_flag_still_shows_every_theme_regardless_of_confidence(
+    db_session, monkeypatch, capsys
+):
+    user = _seed_user(db_session)
+    topic = _seed_topic(db_session, user, "AAPL")
+    # Chosen so no confidence value's digits are a prefix of another's (e.g.
+    # avoid 5/50) — otherwise a substring assertion like "confidence 5" would
+    # false-positive match inside "confidence 50".
+    digest = _seed_digest_with_themes(db_session, user, topic, [80, 55, 13, 2, 37])
+
+    exit_code = _run_cli(db_session, ["show", str(digest.id), "--full"], monkeypatch)
+    assert exit_code == 0
+    out = capsys.readouterr().out
+
+    for confidence in (80, 55, 13, 2, 37):
+        assert f"Summary at confidence {confidence}" in out
+    assert "additional low-confidence" not in out
+
+
+def test_additional_low_confidence_summary_line_wording_and_accuracy(
+    db_session, monkeypatch, capsys
+):
+    user = _seed_user(db_session)
+
+    # Plural: 2 hidden.
+    plural_topic = _seed_topic(db_session, user, "PLURAL")
+    plural_digest = _seed_digest_with_themes(db_session, user, plural_topic, [80, 15, 5])
+    exit_code = _run_cli(db_session, ["show", str(plural_digest.id)], monkeypatch)
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "2 additional low-confidence themes not shown — use --full to see everything." in out
+
+    # Singular: exactly 1 hidden — no trailing "s".
+    singular_topic = _seed_topic(db_session, user, "SINGULAR")
+    singular_digest = _seed_digest_with_themes(db_session, user, singular_topic, [80, 10])
+    exit_code = _run_cli(db_session, ["show", str(singular_digest.id)], monkeypatch)
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "1 additional low-confidence theme not shown — use --full to see everything." in out
+    assert "1 additional low-confidence themes" not in out
+
+    # None hidden: every theme clears the threshold — no summary line at all.
+    none_topic = _seed_topic(db_session, user, "NONEHIDDEN")
+    none_digest = _seed_digest_with_themes(db_session, user, none_topic, [80, 50])
+    exit_code = _run_cli(db_session, ["show", str(none_digest.id)], monkeypatch)
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "additional low-confidence" not in out
