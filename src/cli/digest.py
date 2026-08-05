@@ -9,13 +9,18 @@ guaranteeing on-demand output format/quality matches a scheduled run (User
 Story 2, Acceptance Scenario 2).
 
 `show` renders a stored digest, grouped by topic. Without `--full`, each
-Theme shows its 3-5 curated example posts (default). With `--full` (User
-Story 3, T052), every underlying `SourcePost` for a topic is shown — both
-the ones clustered into a Theme and the ones Filter excluded — each
-annotated with its `filter_outcome`, satisfying FR-016's "every filtered and
-clustered post, not just the shown examples." `--topic <name>` scopes
-rendering to a single topic, still rendering its outcome explicitly (FR-017)
-even when that topic has no Themes this run.
+Theme shows its 3-5 curated example posts (default), and Themes below
+`CONFIDENCE_DISPLAY_THRESHOLD` are hidden entirely — a display-only filter
+(the underlying Theme rows, DraftPost generation, etc. are never touched),
+with a trailing "N additional low-confidence themes not shown" line per
+topic when any are hidden. With `--full` (User Story 3, T052), every
+underlying `SourcePost` for a topic is shown — both the ones clustered into
+a Theme and the ones Filter excluded — each annotated with its
+`filter_outcome`, satisfying FR-016's "every filtered and clustered post,
+not just the shown examples," and every Theme is shown regardless of
+confidence. `--topic <name>` scopes rendering to a single topic, still
+rendering its outcome explicitly (FR-017) even when that topic has no Themes
+this run.
 """
 
 from __future__ import annotations
@@ -37,6 +42,17 @@ from src.models.source_post import SourcePost
 from src.models.theme import Theme
 from src.models.topic import Topic, TopicStatus
 from src.pipeline.orchestrator import run_digest
+
+# Below this confidence_score (0-100, see src/agent/summarize.py's tool-schema
+# calibration bands), the default `digest show` view treats a Theme as noise
+# and hides it. The Summarize prompt itself reserves 0-5 for "concludes this
+# is NOT a genuine trend" and only starts describing a real "moderate spike"
+# at 30+; production eval data showed the low-value entries cluttering
+# digests clustering under confidence 10. 20 clears that noise floor with a
+# 2x margin while staying safely under the 30 "moderate spike" floor, so
+# nothing the model calibrated as a real trend is hidden by default. Tune
+# here if eval data shifts; `--full` always bypasses this filter (FR-016).
+CONFIDENCE_DISPLAY_THRESHOLD = 20
 
 
 def _active_topics(session, user_id) -> list[Topic]:
@@ -108,7 +124,16 @@ def _print_digest(
             .scalars()
             .all()
         )
-        for theme in themes:
+        if full:
+            displayed_themes = themes
+        else:
+            # Display-layer filter only (per CONFIDENCE_DISPLAY_THRESHOLD's
+            # docstring) — the underlying Theme rows are untouched, `--full`
+            # still shows every one of them regardless of confidence.
+            displayed_themes = [
+                theme for theme in themes if theme.confidence_score >= CONFIDENCE_DISPLAY_THRESHOLD
+            ]
+        for theme in displayed_themes:
             print(
                 f"  [rank {theme.rank}] confidence={theme.confidence_score}  "
                 f"is_spike={theme.is_spike}  spike_ratio={theme.spike_ratio}"
@@ -140,6 +165,15 @@ def _print_digest(
                 for post in examples:
                     print(f"        - @{post.author_handle}: {post.text}")
             print()
+
+        if not full:
+            hidden_count = len(themes) - len(displayed_themes)
+            if hidden_count > 0:
+                noun = "theme" if hidden_count == 1 else "themes"
+                print(
+                    f"  {hidden_count} additional low-confidence {noun} not shown — "
+                    "use --full to see everything."
+                )
 
         if full:
             # FR-016: posts Filter excluded, or that Cluster left out of every
