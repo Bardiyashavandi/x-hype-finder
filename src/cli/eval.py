@@ -7,9 +7,11 @@ than a separate table per stage (src/models/evaluation_label.py).
 `label` samples real, unlabeled items straight out of the pipeline's own
 tables (SourcePost/Theme/DraftPost/Digest) — never synthetic data — shows
 the same context a human reviewer needs to judge that stage's decision, and
-records a label. `report` aggregates every label recorded so far into an
-accuracy % (binary stages) or average rating (rated stages), including the
-SC-011 KPI (Digest "worth reading" rating).
+records a label. Pass `--id <uuid>` to label one specific item instead of
+random sampling (still scoped to the current user, and still rejected if
+already labeled by them). `report` aggregates every label recorded so far
+into an accuracy % (binary stages) or average rating (rated stages),
+including the SC-011 KPI (Digest "worth reading" rating).
 
 Detect, Cluster, and Summarize all sample from `Theme` — there's no separate
 "detect result" entity in this schema; the spike call and cluster membership
@@ -246,6 +248,38 @@ def _sample_targets(
     return random.sample(candidates, min(count, len(candidates)))
 
 
+def _lookup_target(
+    session: Session, user_id: uuid.UUID, stage: EvalStage, target_id: uuid.UUID
+) -> object:
+    """Return the single `stage` item identified by `target_id`, scoped to
+    `user_id` (FR-015 — same ownership scoping `_sample_targets` uses, so
+    `--id` can't be used to reach into another user's data).
+
+    Raises EvalCommandError if no such item exists (or isn't owned by this
+    user) or if this user has already labeled it for this stage — `--id`
+    is meant to target one specific item, not silently no-op or double-label.
+    """
+    spec = _STAGE_SPECS[stage]
+    target = session.execute(
+        scoped_select(spec.model, user_id).where(spec.model.id == target_id)
+    ).scalar_one_or_none()
+    if target is None:
+        raise EvalCommandError(f"No '{stage.value}' item with id {target_id} found.")
+
+    already_labeled = session.execute(
+        select(EvaluationLabel.id).where(
+            EvaluationLabel.stage == stage,
+            EvaluationLabel.target_id == target_id,
+            EvaluationLabel.labeled_by_user_id == user_id,
+        )
+    ).scalar_one_or_none()
+    if already_labeled is not None:
+        raise EvalCommandError(
+            f"'{stage.value}' item {target_id} was already labeled by this user."
+        )
+    return target
+
+
 def _prompt_label(stage: EvalStage) -> str:
     """Prompt until a valid label (or skip/quit) is entered. Raises `_Skip`
     or `_Quit`; `EOFError` propagates to the caller to end the session."""
@@ -275,11 +309,20 @@ def _prompt_notes() -> str | None:
     return notes or None
 
 
-def _run_label(session: Session, user_id: uuid.UUID, stage: EvalStage, count: int) -> int:
-    targets = _sample_targets(session, user_id, stage, count)
-    if not targets:
-        print(f"No unlabeled '{stage.value}' items available.", file=sys.stderr)
-        return 0
+def _run_label(
+    session: Session,
+    user_id: uuid.UUID,
+    stage: EvalStage,
+    count: int,
+    target_id: uuid.UUID | None = None,
+) -> int:
+    if target_id is not None:
+        targets = [_lookup_target(session, user_id, stage, target_id)]
+    else:
+        targets = _sample_targets(session, user_id, stage, count)
+        if not targets:
+            print(f"No unlabeled '{stage.value}' items available.", file=sys.stderr)
+            return 0
 
     spec = _STAGE_SPECS[stage]
     labeled = 0
@@ -375,7 +418,14 @@ def main(argv: list[str] | None = None) -> int:
         "-n",
         type=int,
         default=DEFAULT_SAMPLE_COUNT,
-        help=f"How many unlabeled items to sample (default {DEFAULT_SAMPLE_COUNT}).",
+        help=f"How many unlabeled items to sample (default {DEFAULT_SAMPLE_COUNT}). "
+        "Ignored when --id is given.",
+    )
+    label_parser.add_argument(
+        "--id",
+        dest="target_id",
+        default=None,
+        help="Label this specific item by UUID instead of random sampling.",
     )
 
     report_parser = subparsers.add_parser(
@@ -398,7 +448,17 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "label":
                 if args.count < 1:
                     raise EvalCommandError("--count must be at least 1.")
-                return _run_label(session, user.id, EvalStage(args.stage), args.count)
+                target_id = None
+                if args.target_id is not None:
+                    try:
+                        target_id = uuid.UUID(args.target_id)
+                    except ValueError as exc:
+                        raise EvalCommandError(
+                            f"--id must be a valid UUID, got {args.target_id!r}."
+                        ) from exc
+                return _run_label(
+                    session, user.id, EvalStage(args.stage), args.count, target_id
+                )
 
             if args.command == "report":
                 stage = EvalStage(args.stage) if args.stage else None
