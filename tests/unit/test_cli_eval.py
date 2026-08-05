@@ -323,6 +323,99 @@ def test_label_cluster_smoke(db_session, user, monkeypatch, capsys):
     assert "cluster_post_count" in out
 
 
+# --- label: --id targeting ----------------------------------------------------
+
+
+def test_label_with_id_targets_specific_item_ignoring_sampling(
+    db_session, user, monkeypatch, capsys
+):
+    # Seed two chains so random sampling could pick either digest; --id must
+    # deterministically hit the second one regardless.
+    _seed_chain(db_session, user, n_posts=1)
+    chain2 = _seed_chain(db_session, user, n_posts=1)
+    _scripted_input(monkeypatch, ["5", ""])
+
+    exit_code = _run_cli(
+        db_session,
+        ["label", "digest", "--id", str(chain2["digest"].id)],
+        monkeypatch,
+        as_email=user.email,
+    )
+
+    assert exit_code == 0
+    labels = db_session.execute(select(EvaluationLabel)).scalars().all()
+    assert len(labels) == 1
+    assert labels[0].target_id == chain2["digest"].id
+    assert labels[0].label_type == "5"
+    assert "Labeled 1/1" in capsys.readouterr().out
+
+
+def test_label_with_id_rejects_unknown_id(db_session, user, monkeypatch, capsys):
+    _seed_chain(db_session, user, n_posts=1)
+    missing_id = "00000000-0000-0000-0000-000000000000"
+
+    exit_code = _run_cli(
+        db_session, ["label", "digest", "--id", missing_id], monkeypatch, as_email=user.email
+    )
+
+    assert exit_code == 1
+    assert f"No 'digest' item with id {missing_id} found." in capsys.readouterr().err
+    assert db_session.execute(select(EvaluationLabel)).scalars().all() == []
+
+
+def test_label_with_id_rejects_already_labeled_item(db_session, user, monkeypatch, capsys):
+    chain = _seed_chain(db_session, user, n_posts=1)
+    digest_id = chain["digest"].id
+    _scripted_input(monkeypatch, ["5", ""])
+    _run_cli(
+        db_session,
+        ["label", "digest", "--id", str(digest_id)],
+        monkeypatch,
+        as_email=user.email,
+    )
+    capsys.readouterr()  # discard first run's output
+
+    exit_code = _run_cli(
+        db_session,
+        ["label", "digest", "--id", str(digest_id)],
+        monkeypatch,
+        as_email=user.email,
+    )
+
+    assert exit_code == 1
+    assert f"'digest' item {digest_id} was already labeled by this user." in capsys.readouterr().err
+    assert len(db_session.execute(select(EvaluationLabel)).scalars().all()) == 1
+
+
+def test_label_with_id_rejects_item_owned_by_other_user(
+    db_session, user, other_user, monkeypatch, capsys
+):
+    chain = _seed_chain(db_session, user, n_posts=1)
+
+    exit_code = _run_cli(
+        db_session,
+        ["label", "digest", "--id", str(chain["digest"].id)],
+        monkeypatch,
+        as_email=other_user.email,
+    )
+
+    assert exit_code == 1
+    assert f"No 'digest' item with id {chain['digest'].id} found." in capsys.readouterr().err
+    assert db_session.execute(select(EvaluationLabel)).scalars().all() == []
+
+
+def test_label_with_id_rejects_malformed_uuid(db_session, user, monkeypatch, capsys):
+    _seed_chain(db_session, user, n_posts=1)
+
+    exit_code = _run_cli(
+        db_session, ["label", "digest", "--id", "not-a-uuid"], monkeypatch, as_email=user.email
+    )
+
+    assert exit_code == 1
+    assert "--id must be a valid UUID" in capsys.readouterr().err
+    assert db_session.execute(select(EvaluationLabel)).scalars().all() == []
+
+
 # --- report -------------------------------------------------------------------
 
 
