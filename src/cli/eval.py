@@ -456,9 +456,7 @@ def main(argv: list[str] | None = None) -> int:
                         raise EvalCommandError(
                             f"--id must be a valid UUID, got {args.target_id!r}."
                         ) from exc
-                return _run_label(
-                    session, user.id, EvalStage(args.stage), args.count, target_id
-                )
+                return _run_label(session, user.id, EvalStage(args.stage), args.count, target_id)
 
             if args.command == "report":
                 stage = EvalStage(args.stage) if args.stage else None

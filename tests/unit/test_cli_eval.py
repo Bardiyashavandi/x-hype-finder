@@ -383,10 +383,7 @@ def test_label_with_id_rejects_already_labeled_item(db_session, user, monkeypatc
     )
 
     assert exit_code == 1
-    assert (
-        f"'digest' item {digest_id} was already labeled by this user."
-        in capsys.readouterr().err
-    )
+    assert f"'digest' item {digest_id} was already labeled by this user." in capsys.readouterr().err
     assert len(db_session.execute(select(EvaluationLabel)).scalars().all()) == 1
 
 
@@ -403,9 +400,7 @@ def test_label_with_id_rejects_item_owned_by_other_user(
     )
 
     assert exit_code == 1
-    assert (
-        f"No 'digest' item with id {chain['digest'].id} found." in capsys.readouterr().err
-    )
+    assert f"No 'digest' item with id {chain['digest'].id} found." in capsys.readouterr().err
     assert db_session.execute(select(EvaluationLabel)).scalars().all() == []
 
 
