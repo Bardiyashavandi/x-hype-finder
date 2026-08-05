@@ -7,7 +7,12 @@ rewrite step in between. These are about tone and grounding, not mechanics
 like the character limit, which stays defined in code alongside the schema.
 
 - Write in a natural, human voice.
-- No hashtag spam.
+- No hashtag spam — this means no tag-stuffing, not zero hashtags ever. At
+  most one hashtag or cashtag, and only when it's genuinely tied to the
+  post's specific content: the topic's own cashtag (e.g. $SOL for a $SOL
+  theme) or a specific named concept the post is actually about. Never a
+  generic engagement-bait tag (e.g. #crypto, #trending, #bullish) added
+  just to get reach.
 - No generic hype filler.
 - No fabricated numbers or facts — everything stated must already be
   present in the provided theme summary, rationale, or example posts.
