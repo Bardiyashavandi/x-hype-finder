@@ -2,11 +2,12 @@
 (src/cli/drafts.py).
 
 `mark-published` never calls the X API — it only records that the caller
-already posted a `held_manual` draft themselves. Because there is no tweet
-id/URL captured anywhere to verify that, the only safeguard against
-conflating "run this command" with "actually post to X" is an interactive
-confirmation the caller must explicitly type through (or `--yes` to opt out
-for scripting).
+already posted a `held_manual` draft themselves. Because it never captures a
+tweet id/URL to verify that (unlike published_auto/published_manual_override,
+where this system made the API call itself — src/models/draft_post.py), the
+only safeguard against conflating "run this command" with "actually post to
+X" is an interactive confirmation the caller must explicitly type through
+(or `--yes` to opt out for scripting).
 """
 
 from __future__ import annotations
@@ -128,6 +129,43 @@ def test_eof_on_prompt_aborts_without_mutating(db_session, user, monkeypatch):
     assert exit_code == 1
     db_session.refresh(draft)
     assert draft.status == DraftPostStatus.HELD_MANUAL
+
+
+def test_published_manual_override_is_a_recognized_status_choice(db_session, user, monkeypatch):
+    """Locks in that the new status (src/models/draft_post.py) is wired into
+    the real `drafts list --status` CLI's choices, even though there's
+    deliberately no command that ever sets it — see that module's docstring
+    for why. If it weren't recognized, argparse would reject the flag value
+    and exit 2 before this ever ran a query."""
+    exit_code = _run_cli(
+        db_session,
+        ["list", "--status", "published_manual_override"],
+        monkeypatch,
+        as_email=user.email,
+    )
+    assert exit_code == 0
+
+
+def test_mark_published_never_populates_tweet_id_or_url(db_session, user, monkeypatch):
+    """mark-published records that the user posted through the X UI
+    themselves — this system never calls the API for that, so tweet_id/
+    tweet_url must stay None, unlike published_auto/published_manual_override
+    (src/models/draft_post.py)."""
+    draft = _held_draft(user)
+    db_session.add(draft)
+    db_session.commit()
+
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "yes")
+
+    exit_code = _run_cli(
+        db_session, ["mark-published", str(draft.id)], monkeypatch, as_email=user.email
+    )
+
+    assert exit_code == 0
+    db_session.refresh(draft)
+    assert draft.status == DraftPostStatus.PUBLISHED_MANUAL
+    assert draft.tweet_id is None
+    assert draft.tweet_url is None
 
 
 def test_non_held_manual_draft_errors_before_prompting(db_session, user, monkeypatch, capsys):

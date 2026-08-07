@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -247,8 +248,15 @@ def test_threshold_routing_publishes_at_or_above_and_holds_below(db_session, mon
     drafts = {d.confidence_score: d for d in _drafts_for_user(db_session, user.id)}
     assert drafts[HIGH_CONFIDENCE].status == DraftPostStatus.PUBLISHED_AUTO
     assert drafts[HIGH_CONFIDENCE].published_at is not None
+    # The real create_tweet() response's tweet id/URL must round-trip all the
+    # way through decide_and_publish -> the orchestrator -> the persisted
+    # row, not just live in the in-memory PublishOutcome (src/models/draft_post.py).
+    assert drafts[HIGH_CONFIDENCE].tweet_id == "1001"
+    assert drafts[HIGH_CONFIDENCE].tweet_url == f"https://x.com/{user.x_account_handle}/status/1001"
     assert drafts[LOW_CONFIDENCE].status == DraftPostStatus.HELD_BELOW_THRESHOLD
     assert drafts[LOW_CONFIDENCE].published_at is None
+    assert drafts[LOW_CONFIDENCE].tweet_id is None
+    assert drafts[LOW_CONFIDENCE].tweet_url is None
     # Never silently discarded either way — both rows persist with a status.
     assert len(drafts) == 2
 
@@ -397,6 +405,7 @@ class _StubXClient:
         self.create_tweet_calls += 1
         if self.should_fail:
             raise RuntimeError("X API rejected the post")
+        return SimpleNamespace(data={"id": str(1000 + self.create_tweet_calls)})
 
 
 def _on_demand():

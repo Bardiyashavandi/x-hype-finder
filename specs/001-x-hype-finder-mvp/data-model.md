@@ -176,10 +176,12 @@ A system-generated post derived from a high-signal Theme, pending manual or auto
 | `user_id` | FK → User | |
 | `draft_text` | string | from Draft Post stage |
 | `confidence_score` | integer 0-100 | copied from Theme at draft time |
-| `status` | enum: `held_manual`, `published_manual`, `held_below_threshold`, `published_auto`, `publish_failed` | see state machine below |
+| `status` | enum: `held_manual`, `published_manual`, `held_below_threshold`, `published_auto`, `publish_failed`, `published_manual_override` | see state machine below |
 | `created_at` | timestamp | |
 | `published_at` | timestamp, nullable | |
 | `publish_error` | string, nullable | populated on `publish_failed` (FR-019) |
+| `tweet_id` | string, nullable | populated on `published_auto` / `published_manual_override` only — this system made the API call and has the real response; always `None` for `published_manual` (no way to know it) |
+| `tweet_url` | string, nullable | same population rule as `tweet_id` |
 
 **State machine** (FR-010, FR-012, FR-019, edge cases):
 
@@ -189,7 +191,21 @@ created ─────────┤
                  └─ (posting_mode = autonomous) ─┬─ confidence ≥ threshold ──► publish attempt ─┬─ success ─► published_auto
                                                   │                                              └─ failure ─► publish_failed (surfaced, never silently dropped)
                                                   └─ confidence < threshold ──► held_below_threshold (manual review, never auto-discarded)
+
+held_manual ──────────┐
+                       ├─ (human explicitly directs a live create_tweet() call right now) ──► published_manual_override
+held_below_threshold ──┘
 ```
+
+`published_manual_override` is a deliberate escape hatch, not a routine
+routing outcome — there is no CLI command that reaches it. Every occurrence
+is a one-off, hand-confirmed action where a human overrides the normal
+manual-review or confidence-gate flow and has the system make the real API
+call on their behalf in the moment. It differs from `published_auto` in
+*who* decided to publish (a human, right now — not the system's own
+threshold routing, unattended) even though both mean this system itself
+made the `create_tweet()` call (hence both populate `tweet_id`/`tweet_url`,
+unlike `published_manual`).
 
 **Validation**: a draft's `status` MUST be assigned exactly once at creation based on the
 `PostingMode` in effect **at that moment** — never retroactively changed by a later mode switch

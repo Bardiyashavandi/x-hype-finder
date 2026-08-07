@@ -407,6 +407,7 @@ def _create_draft_post(
         confidence_score=theme.confidence_score,
         draft_text=draft_result.draft_text,
         x_client=x_client,
+        x_account_handle=user.x_account_handle,
     )
     draft = DraftPost(
         theme_id=theme.id,
@@ -416,6 +417,8 @@ def _create_draft_post(
         status=outcome.status,
         published_at=outcome.published_at,
         publish_error=outcome.publish_error,
+        tweet_id=outcome.tweet_id,
+        tweet_url=outcome.tweet_url,
     )
     session.add(draft)
     return draft

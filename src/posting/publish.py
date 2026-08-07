@@ -38,6 +38,8 @@ class PublishOutcome:
     status: DraftPostStatus
     published_at: datetime | None
     publish_error: str | None
+    tweet_id: str | None = None
+    tweet_url: str | None = None
 
 
 def decide_and_publish(
@@ -47,6 +49,7 @@ def decide_and_publish(
     confidence_score: int,
     draft_text: str,
     x_client: tweepy.Client,
+    x_account_handle: str,
     now: datetime | None = None,
     rand: RandomLike = random,
 ) -> PublishOutcome:
@@ -56,6 +59,10 @@ def decide_and_publish(
     Never raises for an X API failure — that is surfaced as a
     `PublishOutcome(status=PUBLISH_FAILED, ...)` for the caller to persist,
     per FR-019.
+
+    `x_account_handle` is only used to build `tweet_url` from the real
+    `tweet_id` on a successful publish — this function's own routing never
+    depends on it.
     """
     effective_now = now if now is not None else datetime.now(UTC)
     routing = route_new_draft(posting_mode, confidence_score, now=effective_now)
@@ -72,9 +79,12 @@ def decide_and_publish(
         return PublishOutcome(DraftPostStatus.HELD_BELOW_THRESHOLD, None, None)
 
     try:
-        x_client.create_tweet(text=draft_text)
+        response = x_client.create_tweet(text=draft_text)
     except Exception as exc:  # noqa: BLE001 - any X API failure must surface (FR-019)
         return PublishOutcome(DraftPostStatus.PUBLISH_FAILED, None, str(exc))
 
+    tweet_id = str(response.data["id"])
+    tweet_url = f"https://x.com/{x_account_handle}/status/{tweet_id}"
+
     posting_mode.last_post_published_at = effective_now
-    return PublishOutcome(DraftPostStatus.PUBLISHED_AUTO, effective_now, None)
+    return PublishOutcome(DraftPostStatus.PUBLISHED_AUTO, effective_now, None, tweet_id, tweet_url)
