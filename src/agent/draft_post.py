@@ -81,6 +81,19 @@ _RETRYABLE_ERRORS = (
     anthropic.InternalServerError,
 )
 
+# Explicit request timeout — without one, a hung call blocks silently forever
+# instead of failing into `retry_with_backoff` (observed live: a `digest run`
+# sat with zero output/near-zero CPU for 55+ minutes on a stuck Claude call
+# before being killed manually). `connect` is kept short (10s) since reaching
+# a healthy, known-good API host should take low single-digit seconds at
+# most; `read`/`write`/`pool` stay at the full 60s since legitimate Draft
+# Post generations can take tens of seconds. `anthropic.Timeout` is
+# `httpx.Timeout` re-exported — `anthropic.APITimeoutError` (raised on
+# expiry) subclasses `anthropic.APIConnectionError`, so it's already covered
+# by `_RETRYABLE_ERRORS` above and funnels straight into the existing
+# retry-with-backoff path.
+_CLAUDE_REQUEST_TIMEOUT = anthropic.Timeout(60.0, connect=10.0)
+
 
 @dataclass(frozen=True)
 class DraftPostInput:
@@ -154,7 +167,11 @@ def generate_draft_post(
     doesn't carry the expected tool call / a non-empty draft_text within the
     X post length limit after correction attempts are exhausted.
     """
-    effective_client = client if client is not None else anthropic.Anthropic(api_key=api_key)
+    effective_client = (
+        client
+        if client is not None
+        else anthropic.Anthropic(api_key=api_key, timeout=_CLAUDE_REQUEST_TIMEOUT)
+    )
     messages: list[dict] = [{"role": "user", "content": _build_prompt(data)}]
 
     for attempt in range(_MAX_LENGTH_CORRECTION_ATTEMPTS + 1):

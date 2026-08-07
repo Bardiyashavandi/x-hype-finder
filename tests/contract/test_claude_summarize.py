@@ -268,3 +268,30 @@ def test_transient_error_then_success_does_not_surface_as_error():
 
     assert result.confidence_score == 82
     assert client.messages.create.call_count == 2
+
+
+def test_default_client_construction_sets_an_explicit_request_timeout(monkeypatch):
+    """Without an explicit timeout, a hung call blocks silently forever
+    instead of failing into retry_with_backoff (observed live: a `digest
+    run` sat with zero output for 55+ minutes on a stuck call before being
+    killed manually). Only exercised when `summarize_theme` builds its own
+    client (no `client=` override) — every other test in this file passes a
+    mock client and never reaches this construction path at all."""
+    captured_kwargs = {}
+
+    class _FakeAnthropicClient:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            self.messages = SimpleNamespace(create=lambda **_: _response())
+
+    monkeypatch.setattr(summarize_module.anthropic, "Anthropic", _FakeAnthropicClient)
+
+    summarize_theme(_input(), api_key=API_KEY, model=MODEL)
+
+    assert captured_kwargs["api_key"] == API_KEY
+    timeout = captured_kwargs["timeout"]
+    # Short connect timeout (fail fast if the host is unreachable at all);
+    # full 60s read/write/pool timeout (legitimate generations can take tens
+    # of seconds) — see _CLAUDE_REQUEST_TIMEOUT in summarize.py.
+    assert timeout.connect == 10.0
+    assert timeout.read == 60.0

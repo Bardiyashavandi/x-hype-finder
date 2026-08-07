@@ -266,3 +266,30 @@ class TestLengthCorrectionLoop:
             generate_draft_post(_input(), api_key=API_KEY, model=MODEL, client=client)
 
         assert client.messages.create.call_count == 3
+
+
+def test_default_client_construction_sets_an_explicit_request_timeout(monkeypatch):
+    """Without an explicit timeout, a hung call blocks silently forever
+    instead of failing into retry_with_backoff (observed live: a `digest
+    run` sat with zero output for 55+ minutes on a stuck call before being
+    killed manually). Only exercised when `generate_draft_post` builds its
+    own client (no `client=` override) — every other test in this file
+    passes a mock client and never reaches this construction path at all."""
+    captured_kwargs = {}
+
+    class _FakeAnthropicClient:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+            self.messages = SimpleNamespace(create=lambda **_: _response())
+
+    monkeypatch.setattr(draft_post_module.anthropic, "Anthropic", _FakeAnthropicClient)
+
+    generate_draft_post(_input(), api_key=API_KEY, model=MODEL)
+
+    assert captured_kwargs["api_key"] == API_KEY
+    timeout = captured_kwargs["timeout"]
+    # Short connect timeout (fail fast if the host is unreachable at all);
+    # full 60s read/write/pool timeout (legitimate generations can take tens
+    # of seconds) — see _CLAUDE_REQUEST_TIMEOUT in draft_post.py.
+    assert timeout.connect == 10.0
+    assert timeout.read == 60.0
