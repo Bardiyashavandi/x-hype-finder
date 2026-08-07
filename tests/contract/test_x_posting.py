@@ -124,6 +124,7 @@ def test_bio_check_is_never_cached_reflects_the_live_call_every_time():
 
 def test_publish_call_shape_posts_the_draft_text_via_create_tweet(db_session):
     client = MagicMock()
+    client.create_tweet.return_value = SimpleNamespace(data={"id": "1793550000000000000"})
     posting_mode = _posting_mode()
 
     outcome = decide_and_publish(
@@ -132,6 +133,7 @@ def test_publish_call_shape_posts_the_draft_text_via_create_tweet(db_session):
         confidence_score=90,
         draft_text="AAPL is seeing unusual bullish chatter today.",
         x_client=client,
+        x_account_handle="pilot",
         now=NOW,
     )
 
@@ -142,6 +144,12 @@ def test_publish_call_shape_posts_the_draft_text_via_create_tweet(db_session):
     assert outcome.published_at == NOW
     assert outcome.publish_error is None
     assert posting_mode.last_post_published_at == NOW
+    # The real create_tweet() response's id must survive into the outcome —
+    # published_auto is one of the two statuses that ever populates these
+    # (src/models/draft_post.py) — with tweet_url built from the account
+    # handle passed in, not hardcoded.
+    assert outcome.tweet_id == "1793550000000000000"
+    assert outcome.tweet_url == "https://x.com/pilot/status/1793550000000000000"
 
 
 def test_publish_failure_is_surfaced_never_silently_dropped(db_session):
@@ -157,12 +165,15 @@ def test_publish_failure_is_surfaced_never_silently_dropped(db_session):
         confidence_score=90,
         draft_text="A draft that X rejects.",
         x_client=client,
+        x_account_handle="pilot",
         now=NOW,
     )
 
     assert outcome.status == DraftPostStatus.PUBLISH_FAILED
     assert outcome.published_at is None
     assert outcome.publish_error is not None
+    assert outcome.tweet_id is None
+    assert outcome.tweet_url is None
     assert posting_mode.last_post_published_at is None  # never advanced on failure
 
 
@@ -176,8 +187,11 @@ def test_publish_never_attempted_when_manual_mode_holds_the_draft(db_session):
         confidence_score=95,
         draft_text="Should never be posted.",
         x_client=client,
+        x_account_handle="pilot",
         now=NOW,
     )
 
     client.create_tweet.assert_not_called()
     assert outcome.status == DraftPostStatus.HELD_MANUAL
+    assert outcome.tweet_id is None
+    assert outcome.tweet_url is None

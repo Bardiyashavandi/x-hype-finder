@@ -69,11 +69,13 @@ def _confirm_already_posted(draft: DraftPost) -> bool:
     to X themselves, before we record it as such.
 
     There is no way for this command to verify that a post actually
-    happened — no tweet id/URL is captured anywhere for manually-posted
-    drafts — so this is a confirmation gate, not a verification. Its only
-    job is to make sure "run mark-published" and "actually post to X" are
-    never conflated in the moment, which is what caused a draft to be
-    recorded as published before it had been.
+    happened — a `published_manual` draft never gets a `tweet_id`/`tweet_url`
+    captured, unlike `published_auto`/`published_manual_override` where this
+    system made the API call itself (src/models/draft_post.py) — so this is
+    a confirmation gate, not a verification. Its only job is to make sure
+    "run mark-published" and "actually post to X" are never conflated in the
+    moment, which is what caused a draft to be recorded as published before
+    it had been.
     """
     print(
         "This will mark the draft below as PUBLISHED without posting it to X — "
@@ -100,6 +102,8 @@ def _print_drafts(drafts: list[DraftPost]) -> None:
             f"\tpublished_at={published_at}"
         )
         print(f"    {draft.draft_text}")
+        if draft.tweet_url:
+            print(f"    tweet_url: {draft.tweet_url}")
         if draft.publish_error:
             print(f"    publish_error: {draft.publish_error}")
 
