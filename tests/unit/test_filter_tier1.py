@@ -1,8 +1,9 @@
 """Unit tests for Filter Tier 1 rule scoring (tasks.md T023).
 
 Covers each individual heuristic (account age, follower ratio, velocity,
-duplicate-text ratio, link ratio, spam patterns) via `score_tier1`'s
-`reasons` output, plus the three decision buckets those scores resolve into.
+duplicate-text ratio, link ratio, cashtag-stuffing count, spam patterns) via
+`score_tier1`'s `reasons` output, plus the three decision buckets those
+scores resolve into.
 """
 
 from datetime import UTC, datetime
@@ -200,3 +201,102 @@ def test_ambiguous_when_some_but_not_enough_signals_combine():
     result = score_tier1(posts)["1"]
     assert result.decision == Tier1Decision.AMBIGUOUS
     assert 20 < result.score < 70
+
+
+# --- bare/labeled contract-address regression tests --------------------------
+#
+# Anonymized from real eval-labeled examples (2026-08-05 digest review):
+# Tier 1 was scoring 0 on "gem caller"/pump.fun-migration bot templates that
+# paste a raw token address inline, because no _SPAM_PATTERNS phrase covered
+# hex addresses, `solana:` URIs, or a `CA:` label.
+
+
+def test_contract_address_signal_fires_official_ca_label_variant():
+    # Real example (CSRcoinOfficial): scored 0.0 under the old pattern set
+    # despite pasting an "Official Contract Address (CA):" plus a pump.fun
+    # mint address.
+    posts = [
+        _post(
+            "1",
+            "Welcome to CryptoStalker ($CSR) Official Contract Address (CA): "
+            "FsuKNhg6HibqmZD7fxzqvrUU5MPPw3qBkGNx3rXVpump Buy on pump.fun",
+        )
+    ]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
+
+
+def test_contract_address_signal_fires_bare_hex_ca_label_variant():
+    # Real example (GemChaserSOL-style "gem caller" bot template): a `CA:`
+    # label immediately followed by a bare 0x hex token address.
+    posts = [
+        _post(
+            "1",
+            "MARKET STRUCTURE\nBuyers: 0 | Sellers: 2\nCA:\n"
+            "0x020bfC650A365f8BB26819deAAbF3E21291018b4",
+        )
+    ]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
+
+
+def test_contract_address_signal_fires_solana_uri_variant():
+    # Real example (thetillydog): a bare `solana:<mint address>` URI with no
+    # other commentary.
+    posts = [_post("1", "@bloodweb3 solana:5Jvxc2c62cw2Ptm8ZS2rS474dRFiCwM6jRGPkfLwpump")]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
+
+
+# --- cashtag-stuffing regression tests ----------------------------------------
+#
+# Anonymized from real eval-labeled examples (2026-08-05 digest review): across
+# 480 real fetched posts, the legitimate ceiling was 5 distinct cashtags (a
+# genuine technical-analysis post); ticker-stuffing spam started at 6.
+
+
+def test_cashtag_stuffing_signal_fires_above_threshold():
+    # Real example (beallcrypto): 20 distinct cashtags stuffed into one post.
+    posts = [
+        _post(
+            "1",
+            "shorting $SNDK at 1400. $BTC $ETH $PEPE $XRP $ZIG $SNAI $MANEKI $CWIF "
+            "$SOL $NEIRO $RFC $ARDR $HYPE $GAS $VINE $HPPO $KET $PAAL $TRUMP",
+        )
+    ]
+    result = score_tier1(posts)["1"]
+    assert "cashtag_stuffing" in result.reasons
+
+
+def test_legitimate_multi_ticker_post_does_not_fire_cashtag_stuffing():
+    # Real example (NortonBlakeCA): genuine technical-analysis post mentioning
+    # 5 distinct tickers — must stay under the threshold and keep clear-keep.
+    posts = [
+        _post(
+            "1",
+            "Exit strategy: $SOL\n\nIf crypto price loses the reclaimed HTF order "
+            "block, I stop thinking about upside because liquidity has already "
+            "shifted.\n\n$BTC $NOW $ZK $CFG",
+        )
+    ]
+    result = score_tier1(posts)["1"]
+    assert "cashtag_stuffing" not in result.reasons
+    assert result.decision == Tier1Decision.CLEAR_KEEP
+
+
+# --- "click link" regex-widening regression test ------------------------------
+
+
+def test_click_link_signal_fires_with_filler_words_between():
+    # Real example (beallcrypto): "Click on the link below" didn't match the
+    # old `\bclick (the )?link\b` pattern, which only allowed a single
+    # optional "the " between the two words.
+    posts = [
+        _post(
+            "1",
+            "shorting $SNDK with my premium group. Click on the link below to "
+            "join our free signal group",
+        )
+    ]
+    result = score_tier1(posts)["1"]
+    assert "spam_pattern" in result.reasons
