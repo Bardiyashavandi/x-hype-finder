@@ -5,8 +5,10 @@ Fully deterministic, two-tier bot/noise filter — no LLM/agent judgment at
 either tier (Constitution Principle I):
 
 - Tier 1 (cheap rule-based): per-post heuristics over account age, follower/
-  following ratio, posting velocity, duplicate-text ratio, link ratio, and
-  known spam patterns, bucketed into clear-keep / clear-exclude / ambiguous.
+  following ratio, posting velocity, duplicate-text ratio, link ratio,
+  cashtag-stuffing count, and known spam patterns (including bare/labeled
+  contract-address posting), bucketed into clear-keep / clear-exclude /
+  ambiguous.
 - Tier 2 (escalated only for Tier 1's ambiguous posts): an embedding-based
   coordinated-content check (near-duplicate content from distinct authors in
   a tight time window) combined with a stricter composite threshold over the
@@ -40,6 +42,12 @@ HIGH_VELOCITY_POSTS_PER_DAY = 50
 DUPLICATE_TEXT_SIMILARITY = 0.9
 DUPLICATE_RATIO_THRESHOLD = 0.5
 LINK_RATIO_THRESHOLD = 0.5
+# Real eval-labeled data (2026-08-05 digest review) showed 0 distinct cashtags
+# on 375/480 fetched posts and the one legitimate multi-ticker post (genuine
+# technical analysis) topped out at 5; ticker-stuffing spam (fake-signal-group
+# shills) started at 6 and ran as high as 20 — 6 draws the line without
+# touching the observed legitimate case.
+CASHTAG_STUFFING_THRESHOLD = 6
 
 CLEAR_EXCLUDE_SCORE = 70.0
 CLEAR_KEEP_SCORE = 20.0
@@ -50,13 +58,19 @@ _SCORE_HIGH_VELOCITY = 20.0
 _SCORE_DUPLICATE_TEXT = 25.0
 _SCORE_LINK_HEAVY = 10.0
 _SCORE_SPAM_PATTERN = 25.0
+_SCORE_CASHTAG_STUFFING = 20.0
 
 _URL_PATTERN = re.compile(r"https?://\S+")
+_CASHTAG_PATTERN = re.compile(r"\$[A-Za-z]{2,10}\b")
 _SPAM_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE | re.DOTALL)
     for pattern in (
         r"\bdm me\b",
-        r"\bclick (the )?link\b",
+        # Was `\bclick (the )?link\b` — missed real spam phrased "click *on
+        # the* link" (eval-labeled beallcrypto example) because only a single
+        # optional "the " was allowed between the two words. Widened to allow
+        # up to 15 chars of filler ("on the", "this", "that below", ...).
+        r"\bclick\b.{0,15}\blink\b",
         r"\bcheck (out )?my bio\b",
         r"\bguaranteed profit(s)?\b",
         r"\b\d{2,}x gains?\b",
@@ -70,6 +84,19 @@ _SPAM_PATTERNS = tuple(
         # rather than one linear pattern like the phrases above.
         r"(?=.*\bwallet\b)(?=.*\b(?:drop|comment|send)\b)"
         r"(?=.*\b(?:airdrop|giveaway|winner(?:s)?)\b)",
+        # Bare/labeled contract-address posting: real eval labels showed
+        # Tier 1 missing "gem caller"/pump.fun-migration bot templates that
+        # paste a raw token address inline (0x hex, a `solana:` URI, a `CA:`
+        # label, or the literal phrase "contract address") — e.g. real
+        # examples CSRcoinOfficial ("Official Contract Address (CA): Fsu...
+        # pump"), GemChaserSOL ("CA:\n0x020bfC65..."), thetillydog
+        # ("solana:5Jvxc2c6...pump"). Legitimate hype/community accounts talk
+        # about tokens by name/ticker, not by pasting mint addresses, so this
+        # is a near-zero-false-positive cue in this domain.
+        r"\b0x[a-fA-F0-9]{38,40}\b"
+        r"|\bsolana:[1-9A-HJ-NP-Za-km-z]{32,44}\b"
+        r"|\bCA\s*:\s*[1-9A-HJ-NP-Za-km-z]{32,44}\b"
+        r"|\bcontract address\b",
     )
 )
 
@@ -131,6 +158,10 @@ def _matches_spam_pattern(text: str) -> bool:
     return any(pattern.search(text) for pattern in _SPAM_PATTERNS)
 
 
+def _distinct_cashtag_count(text: str) -> int:
+    return len({match.upper() for match in _CASHTAG_PATTERN.findall(text)})
+
+
 def score_tier1(posts: list[RawPost]) -> dict[str, Tier1Result]:
     """Score every post 0-100 on cheap rule-based bot/noise signals.
 
@@ -171,6 +202,10 @@ def score_tier1(posts: list[RawPost]) -> dict[str, Tier1Result]:
         if _matches_spam_pattern(post.text):
             score += _SCORE_SPAM_PATTERN
             reasons.append("spam_pattern")
+
+        if _distinct_cashtag_count(post.text) >= CASHTAG_STUFFING_THRESHOLD:
+            score += _SCORE_CASHTAG_STUFFING
+            reasons.append("cashtag_stuffing")
 
         score = min(score, 100.0)
         if score >= CLEAR_EXCLUDE_SCORE:
