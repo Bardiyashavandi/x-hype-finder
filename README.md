@@ -10,19 +10,46 @@ short, ranked, evidence-backed digest of what's actually gaining traction and wh
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [About The Project](#about-the-project)
 - [Architecture](#architecture)
 - [Algorithms](#algorithms)
+- [How It Works](#how-it-works)
+- [Database Schema](#database-schema)
 - [Built With](#built-with)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
+- [Sample Output](#sample-output)
 - [Demo Recording](#demo-recording)
 - [Cost Model](#cost-model)
 - [Development Process](#development-process)
+- [How It Was Built](#how-it-was-built)
 - [Roadmap](#roadmap)
 - [License](#license)
+
+## Quick Start
+
+Five commands from a clean checkout to a first real digest — assumes Ollama is already running
+locally with `nomic-embed-text` pulled and `.env` is filled in (see
+[Prerequisites](#prerequisites)/[Installation](#installation) below if not):
+
+```sh
+uv sync
+cp .env.example .env                 # fill in your API keys before continuing
+uv run alembic upgrade head
+python -m src.cli.topic add "AI agents"
+python -m src.cli.digest run
+```
+
+`digest run` prints the new digest's id on completion — read it with:
+
+```sh
+python -m src.cli.digest show <digest-id>
+```
+
+See [Sample Output](#sample-output) for what real output from that command actually looks like.
 
 ## About The Project
 
@@ -271,6 +298,298 @@ other, and the threshold correctly declines to force them into shared stories th
 A narrower, handle-anchored topic sees proportionally larger clusters, since its posts are more
 likely to actually be repeating or reacting to the same specific thing.
 
+## How It Works
+
+[Architecture](#architecture) shows the pipeline's shape end to end; [Algorithms](#algorithms) is the
+formula reference for the three fully-deterministic stages (Filter, Detect, Cluster). This section is
+the fuller engineering walkthrough — every stage in execution order, including the two AI-powered
+stages and the posting gate, which Algorithms deliberately doesn't cover (it's scoped to non-LLM
+logic only, per Constitution Principle I).
+
+#### Fetch
+
+`get_fetch_provider()` (`src/pipeline/fetch_provider.py`) resolves `FETCH_PROVIDER` to one of two
+interchangeable backends — TwitterAPIs.com (default) or TwitterAPI.io — both returning the same
+`RawPost`/`AuthorMetadata`/`EngagementMetrics` shape regardless of provider. The search query itself
+is built by the shared `src/pipeline/query_builder.py::build_search_query()`: a topic name is quoted
+as an exact phrase (`"AI agents"`) unless it starts with `$`, in which case it's passed bare so X's
+own cashtag operator matches ticker mentions specifically, rather than a literal-text search that also
+catches unrelated words in other languages — see [How It Was Built → Cashtag query
+bug](#cashtag-query-bug) for the incident that motivated this. Handles resolve to `from:<handle>` OR
+clauses; the whole query is windowed with `since_time`/`until_time` Unix timestamps. Pagination runs
+through `_fetch_page`, wrapped in `retry_with_backoff` for transient failures, up to
+`MAX_POSTS_PER_RUN` posts per topic per run — paced deliberately on the TwitterAPI.io path after a
+free-tier rate limit surfaced in production; see [How It Was Built → Rate-limit pacing
+discovery](#rate-limit-pacing-discovery).
+
+#### Filter
+
+Two tiers, both fully deterministic (Constitution Principle I) — Tier 1's 7-signal weighted score
+buckets every post into `clear_keep`/`clear_exclude`/`ambiguous`, and Tier 2's embedding-based
+coordinated-content check runs only over what Tier 1 couldn't confidently resolve, so the expensive
+check never runs on posts a cheap rule already handled. Full weights, thresholds, and the two-tier
+rationale: [Algorithms → Filter](#algorithms).
+
+#### Detect
+
+Compares a topic's current filtered volume against its own trailing baseline using a variance-aware
+bound (`K_SIGMA=2.5` effective standard deviations, adapting to each topic's own volume regime)
+instead of a fixed multiplier, plus a 7-day observation gate for newly tracked topics. Full formula
+and the low-volume/high-volume worked example: [Algorithms → Detect](#algorithms).
+
+#### Cluster
+
+Embeds every Filter-kept post and runs scikit-learn's `AgglomerativeClustering` with a cosine-distance
+threshold (0.25, i.e. 0.75 similarity) rather than a fixed cluster count, so the number of themes is
+whatever the actual content supports — including singleton clusters for posts with no close peers.
+Full mechanics and a real example run: [Algorithms → Cluster](#algorithms).
+
+#### Rank
+
+`src/pipeline/rank.py` orders every Theme across every topic in the run by significance, descending —
+a pure sort; no new judgment is introduced at this stage.
+
+#### Summarize
+
+The first of two stages where an LLM (Claude, `claude-sonnet-5`) enters the pipeline — and only
+*after* Filter/Detect/Cluster have already decided what's worth looking at; Summarize never decides
+what counts as a spike or filters anything itself. `summarize_theme()` (`src/agent/summarize.py`)
+calls Claude with a `strict: true` tool schema — grammar-constrained generation guaranteeing
+`summary`, `rationale`, and `confidence_score` are always present with the right types, added after a
+real production failure (see [How It Was Built → Confidence-calibration
+bug](#confidence-calibration-bug)).
+
+`confidence_score` is explicitly **grounded in four deterministic signals passed into the prompt**,
+not invented from the raw post text alone: `spike_ratio`, `cluster_post_count`,
+`filter_survival_rate`, and distinct author count. The tool schema spells out four calibration bands
+so the model can't hedge with a "polite" middle score when evidence is weak:
+
+| Signal pattern | confidence_score |
+|---|---|
+| 1 post, 1 author, no spike_ratio | 0-5 |
+| A handful of posts, weak/no spike signal or low author diversity | 5-25 |
+| Moderate spike_ratio (roughly 3-5x baseline) with several distinct authors | 30-65 |
+| Strong spike_ratio (>5x), high post count, high author diversity | 65-100 |
+
+The prompt reinforces this explicitly: *"If your rationale concludes this is NOT a genuine trend,
+confidence_score MUST be 0-5 — do not output 6-15 as a polite minimum."* A defensive
+`_recover_leaked_confidence_score()` fallback also strips a known legacy tool-call artifact
+(`</rationale>\n<parameter name="confidence_score">N`) that occasionally leaked into another string
+field in production, recovering the value instead of losing the whole theme — see [How It Was Built →
+Confidence-calibration bug](#confidence-calibration-bug) for how this surfaced.
+
+#### Draft Post
+
+The second and final LLM-powered stage (`generate_draft_post()`, `src/agent/draft_post.py`) — takes a
+high-signal Theme's summary, rationale, and example posts and drafts a ready-to-publish X post.
+`confidence_score` is **not** re-generated here; it's copied verbatim from the Theme at draft time
+(see [Database Schema](#database-schema)). Tone and grounding constraints — natural voice, at most one
+hashtag/cashtag and only when genuinely tied to the content, no fabricated facts, no generic hype
+filler — live in a standalone `prompts/voice_guide.md`, injected into the tool schema's field
+description rather than hardcoded in the module, so the style guide is reviewable/editable without
+touching code.
+
+Since a `draft_text` over X's 280-character limit can't just be truncated without cutting a sentence
+or the point mid-thought, an over-length draft isn't discarded after a single miss: it's fed back to
+Claude as a `tool_result` error naming the exact overage ("That draft_text was 312 characters — 32
+over the 280 limit... Cut words, don't truncate mid-sentence."), giving the model up to 2 more
+attempts to shorten the *same* post with real feedback, rather than hoping an independent resample
+happens to fit.
+
+#### Posting Gate
+
+Every `DraftPost` is assigned a `status` exactly once, at creation, based on `PostingMode` at that
+instant — never retroactively changed by a later mode switch:
+
+```
+                 ┌─ mode=manual, any confidence ──► held_manual ──(human publishes by hand)──► published_manual
+created ─────────┤
+                 └─ mode=autonomous ─┬─ confidence ≥ threshold ──► publish attempt ─┬─ success ─► published_auto
+                                     │                                              └─ failure ─► publish_failed
+                                     └─ confidence < threshold ──► held_below_threshold (never auto-discarded)
+```
+
+`mode` can only become `autonomous` once **all** of the following hold (`src/posting/mode.py`,
+Constitution Principles III/IV):
+
+- The **3-week validation period** has elapsed (`validation_period_ends_at`, anchored to each user's
+  first run) — zero posts go out unattended before this, regardless of confidence.
+- A **live check** of the account's X bio contains a visible "automated" label at the instant the
+  switch is flipped (`check_bio_has_automated_label`) — re-verified every time, not a one-time setup
+  checkbox.
+- The **kill switch** isn't engaged — flipping it forces manual-hold behavior immediately, independent
+  of `mode`.
+
+Once autonomous, two more guards apply at publish time, independent of the mode/confidence gate above:
+publish timing is jittered between posts (up to 4 hours) so cadence is never perfectly robotic, and a
+rolling 24-hour cap blocks a 6th autonomous publish regardless of how many high-confidence drafts are
+queued (`RATE_CAP_POSTS_PER_ROLLING_WINDOW=5`). There's also a deliberate escape hatch outside this
+whole state machine — `published_manual_override` — for a human to direct a real `create_tweet()`
+call on a held draft in the moment; it's a one-off, hand-confirmed action with no CLI command that
+reaches it automatically, never a routine path.
+
+## Database Schema
+
+SQLite by default (see [Built With](#built-with)), one file per deployment, every table scoped by
+`user_id` — directly or transitively — so query isolation between users is enforced structurally, not
+just by convention (`src/db/scoped.py`). Fields below are sourced directly from the current
+`src/models/*.py`, not from the original planning doc
+([`data-model.md`](specs/001-x-hype-finder-mvp/data-model.md)), which predates several
+since-added columns.
+
+**User** — one row per tracked user/X account.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `email` | string, unique | notification target |
+| `x_account_handle` | string | the account this user posts as |
+| `created_at` | timestamp | |
+
+**Topic** — a tracked keyword/ticker.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `user_id` | FK → User | |
+| `name` | string | unique per user among `active` topics |
+| `x_handles` | JSON list | optional associated handles |
+| `status` | enum | `active`, `removed` (soft delete) |
+| `first_tracked_at` | timestamp | anchors the 7-day observation window |
+| `created_at`, `updated_at` | timestamp | |
+
+`observation_period_active` is derived at read time (`now - first_tracked_at < 7 days`), never
+stored.
+
+**TopicBaselineSnapshot** — the durable daily activity record Detect compares against.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `topic_id` | FK → Topic | |
+| `window_date` | date | one row per `(topic_id, window_date)` |
+| `filtered_post_count` | integer | Filter-kept posts that day |
+| `created_at` | timestamp | |
+
+This table — aggregates only — outlives the raw `SourcePost` rows that fed it; see retention note
+below.
+
+**Digest** — one ranked run, scheduled or on-demand.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `user_id` | FK → User | |
+| `run_type` | enum | `scheduled`, `on_demand` |
+| `started_at`, `completed_at` | timestamp | |
+| `status` | enum | `completed`, `partial`, `failed` |
+| `notification_sent_at` | timestamp, nullable | |
+
+**DigestTopicResult** — per-topic outcome within one Digest, so a topic is never silently omitted.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `digest_id` | FK → Digest | |
+| `topic_id` | FK → Topic | |
+| `outcome` | enum | `themes_present`, `no_significant_activity`, `all_filtered_as_noise`, `fetch_error`, `incomplete_rate_limited` |
+| `error_detail` | string, nullable | populated for `fetch_error` |
+
+**SourcePost** — one retrieved post, carrying its Filter outcome and cluster assignment.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `topic_id`, `digest_topic_result_id` | FK | |
+| `x_post_id`, `author_handle`, `text`, `posted_at` | — | |
+| `filter_outcome` | enum | `kept`, `excluded_rule`, `excluded_deeper_check` |
+| `theme_id` | FK → Theme, nullable | set once clustered (only if `kept`) |
+| `is_example` | boolean | flags the curated 3-5 posts shown by default per Theme |
+| `followers_count`, `following_count`, `account_age_days`, `post_frequency` | nullable | author metadata Tier 1 scored against — persisted since PR #17 |
+| `like_count`, `retweet_count`, `reply_count`, `quote_count`, `view_count` | nullable | engagement counts, only when the active Fetch provider exposes them |
+
+**Theme** — a cluster of related, filtered posts within one topic's run.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `digest_topic_result_id` | FK | |
+| `summary`, `rationale` | string | from Summarize |
+| `confidence_score` | integer 0-100 | |
+| `is_spike` | boolean | always `False` during the 7-day observation period |
+| `spike_ratio` | numeric, nullable | |
+| `cluster_post_count` | integer | |
+| `rank` | integer | descending significance within the Digest |
+
+**DraftPost** — a generated post pending manual or autonomous handling.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `theme_id`, `user_id` | FK | |
+| `draft_text` | string | |
+| `confidence_score` | integer 0-100 | copied from Theme at draft time, never re-generated |
+| `status` | enum | `held_manual`, `published_manual`, `held_below_threshold`, `published_auto`, `publish_failed`, `published_manual_override` |
+| `created_at`, `published_at` | timestamp | |
+| `publish_error` | string, nullable | |
+| `tweet_id`, `tweet_url` | string, nullable | populated only for `published_auto`/`published_manual_override` — the two statuses where this system itself made the `create_tweet()` call |
+
+Full state machine and what distinguishes all six statuses: [How It Works → Posting
+Gate](#posting-gate).
+
+**PostingMode** — one row per user, governing draft handling.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `user_id` | FK → User, unique | |
+| `mode` | enum | `manual`, `autonomous` |
+| `confidence_threshold` | integer 0-100 | default 70 |
+| `validation_period_ends_at` | timestamp | 3 weeks from first run |
+| `kill_switch_engaged` | boolean | |
+| `last_post_published_at` | timestamp, nullable | drives the rolling-24h cap and jitter |
+| `updated_at` | timestamp | |
+
+Gating rules that read/write this state: [How It Works → Posting Gate](#posting-gate).
+
+**EvaluationLabel** — one shared table for human-in-the-loop judgment across every stage.
+
+| Field | Type | Note |
+|---|---|---|
+| `id` | UUID, PK | |
+| `stage` | enum | `filter`, `detect`, `cluster`, `summarize`, `draft`, `digest` |
+| `target_id` | UUID, no FK | points at whichever model `stage` judges — a polymorphic association enforced only at the application layer, since one column can't FK to four different tables |
+| `label_type` | string | `correct`/`incorrect` for binary stages, `"1"`-`"5"` for rated stages |
+| `notes` | string, nullable | |
+| `labeled_at` | timestamp | |
+| `labeled_by_user_id` | FK → User | |
+
+Unique on `(stage, target_id, labeled_by_user_id)` — two different users may independently label the
+same item, but one user can't double-label it for the same stage.
+
+#### Entity relationships
+
+```
+User 1──* Topic 1──* TopicBaselineSnapshot
+User 1──* Digest 1──* DigestTopicResult *──1 Topic
+DigestTopicResult 1──* SourcePost
+DigestTopicResult 1──* Theme 1──* SourcePost (clustered subset, incl. examples)
+Theme 1──* DraftPost *──1 User
+User 1──1 PostingMode
+User 1──* EvaluationLabel  (target_id → SourcePost / Theme / DraftPost / Digest, app-layer only)
+```
+
+#### What's persisted vs. transient
+
+`TopicBaselineSnapshot` is the only durable historical record — daily aggregate counts, retained
+indefinitely. `SourcePost` rows are retained only long enough to serve drill-down for the digest they
+belong to and to compute that day's baseline snapshot; a scheduled retention sweep
+(`src/pipeline/baseline.py`, run by the scheduler alongside scheduled digests) prunes them afterward.
+Author metadata and engagement counts on `SourcePost` are both nullable by necessity, not by
+oversight: the metadata columns didn't exist before PR #17 (nothing to backfill on older rows), and
+engagement counts are only ever populated when the active Fetch provider's response includes them
+(currently only `fetch_twitterapis_com.py` — see [Algorithms → Filter](#algorithms)).
+
 ## Built With
 
 - **[Python](https://www.python.org/) 3.11+** — the entire application, CLI included (no web/GUI
@@ -397,6 +716,58 @@ kill_switch_engaged:       False
 last_post_published_at:    -
 ```
 
+## Sample Output
+
+Real, unedited output — not a mockup — from `digest show` on digest `9546aad9-3e69-4bcf-8119-da55aca4aa93`,
+scoped to its `Claude Code` topic (the same run embedded in [Demo Recording](#demo-recording) below):
+
+```
+== Claude Code ==  outcome=themes_present
+  [rank 1] confidence=30  is_spike=False  spike_ratio=None
+      summary:   A cluster of Japanese-language social posts discussing everyday use of Claude Code (and comparisons with Codex) for automation, coding workflows, and even a physical hardware/display project built with it.
+      rationale: There are 10 posts from 9 distinct authors with a 100% filter survival rate, suggesting decent topical diversity and organic engagement rather than a single spam source. However, no spike_ratio is available since the topic is still within its initial 7-day observation window, so we cannot confirm this represents an actual surge above baseline activity. The content itself is varied (personal anecdotes, tips, comparisons, a hardware showcase) rather than a single coordinated narrative, which is consistent with steady ambient chatter about a popular dev tool rather than a clear breakout spike. Given the lack of a measurable spike signal despite reasonable author diversity, this warrants a moderate-low confidence score.
+      examples (5 of 10):
+        - @zou_003: （ぞう）
+「スタバ飲みながらのんびり...」
+
+（Claude code）
+「リサーチしています...
+　投稿を作成しています...
+　投稿完了。インサイトを分析します...
+　次回の作業に移行します...」
+
+（スマホ）
+「商品が購入されました。」
+「商品が購入されました。」
+「商品が購入されました。」
+ 
+（ぞう）
+「売り上げ画面見ながら、
+　めっちゃﾆﾔﾆﾔしてる。笑」
+
+ AIを使いこなすだけで、
+まじで生活が変わるから、
+自動化できるところは自動化すべき。
+        - @zou_003: Claude Codeを実装して、
+自動化した結果・・・
+        - @Nazomi76: Claude codeにとあるAI作らせてたら1トーク目で96%使われて鬱
+あのよく分からないエンジニアスキル入れてみるか
+        - @sedation19: Claude Code楽しすぎワロタ
+        - @ProletariatPro: codexと Claude Code、片方200ドルじゃなくて両方に100ドルずつ課金して、それぞれクロスチェックさせるのが一番良さそう、AI オーケストレーションとかもあるから、まあ両方課金がしばらく潮流になる気もするが
+
+  28 additional low-confidence themes not shown — use --full to see everything.
+```
+
+Worth noticing what this one theme demonstrates end to end: `is_spike=False` and `spike_ratio=None`
+because `Claude Code` is still inside its 7-day observation window (see [How It Works →
+Detect](#detect)) — yet the theme still surfaces, because Summarize grounds `confidence_score` in
+*multiple* signals (author diversity, filter survival rate), not spike_ratio alone. `confidence=30`
+sits in Summarize's "weak-to-moderate evidence" band precisely because spike evidence is absent even
+though the other signals are decent — see [How It Works → Summarize](#summarize) for the exact
+calibration bands. And the "28 additional low-confidence themes not shown" line is
+`CONFIDENCE_DISPLAY_THRESHOLD` (see [Usage](#usage)) doing its job on a topic broad enough to
+fragment into dozens of low-signal singleton clusters.
+
 ## Demo Recording
 
 A real terminal session against live tracked-topic data — `topic list`, `digest show` on a
@@ -451,6 +822,114 @@ Everything is checked in and readable:
 notes, data model, API/CLI contracts, and the complete task breakdown (all 72 tasks, done) behind
 this implementation. Every push and pull request also runs the full test suite plus lint/format
 checks automatically — [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
+
+## How It Was Built
+
+The [Development Process](#development-process) section above covers the spec-kit toolchain in
+brief; this is the fuller story — the actual sequence of decisions and the real incidents that shaped
+the current implementation. Everything referenced below is checked into
+[`specs/001-x-hype-finder-mvp/`](specs/001-x-hype-finder-mvp/): the constitution, the spec, the plan,
+the research notes, and the full task-by-task history.
+
+#### From constitution to shipped code
+
+Before any feature work, [`.specify/memory/constitution.md`](.specify/memory/constitution.md) fixed
+seven non-negotiable engineering principles the rest of the project had to satisfy, not just aim for:
+a deterministic, testable data pipeline with no LLM judgment in Fetch/Filter/Detect/Cluster; Filter
+running strictly before Detect (so a bot burst can never masquerade as a trend); staged posting
+autonomy (3 manual-only weeks, no exceptions); platform-safe autonomous posting (a live bio-label
+check plus mandatory jitter); credential hygiene (env vars only, immediate rotation on exposure); a
+fixed one-time $50 cost ceiling, not a renewing budget; and a measurable definition of done for every
+feature, not "looks right."
+
+Each principle then governed [`spec.md`](specs/001-x-hype-finder-mvp/spec.md) (5 user stories,
+functional requirements, acceptance criteria) → [`plan.md`](specs/001-x-hype-finder-mvp/plan.md) +
+[`research.md`](specs/001-x-hype-finder-mvp/research.md) (architecture, tech stack, and the reasoning
+behind every non-obvious decision — why z-score over a fixed multiplier, why two Filter tiers, why
+manual-first posting) → [`tasks.md`](specs/001-x-hype-finder-mvp/tasks.md) (72 dependency-ordered,
+independently testable units of work) → implementation, task by task, each one shipped with its own
+tests before being marked done (Constitution Principle VII). All 72 tasks are checked off; the trail
+from idea to shipped feature is still readable in that directory today, not summarized away.
+
+#### Real incidents along the way
+
+Spec-driven planning caught most design questions before code was written — but five real problems
+only surfaced once the system ran against live data, and fixing them is as much a part of "how this
+was built" as the original design:
+
+##### Rate-limit pacing discovery
+
+*(commit [`c65e660`](https://github.com/Bardiyashavandi/x-hype-finder/commit/c65e660))* — Live
+end-to-end validation against TwitterAPI.io's free tier hit a wall neither the plan nor the contract
+tests had modeled: **0.2 queries/second**, i.e. one request every 5 seconds. Fetch's pagination loop
+had no pacing at all — each page after the first fired immediately and got 429'd, relying entirely on
+retry-after-failure backoff to recover. Fix: `MAX_POSTS_PER_RUN` temporarily cut from the planned 200
+down to 20, a proactive `INTER_PAGE_DELAY_SECONDS = 5.0` between successive page requests, and the
+retry backoff's own `base_delay_seconds` raised to match. The comments marking these as `TEMPORARY`
+turned out to be right: a later side-by-side comparison found TwitterAPIs.com faster and at full data
+parity without any such cap, and it became the default provider (PR
+[#11](https://github.com/Bardiyashavandi/x-hype-finder/pull/11)) — but the pacing fix stayed in
+`fetch.py` for anyone still using the free-tier alternative.
+
+##### Confidence-calibration bug
+
+*(same commit)* — The first live Summarize calls exposed a real prompt-design gap: Claude would hedge
+with a "polite" moderate confidence_score even when its own rationale concluded a theme *wasn't* a
+genuine trend — exactly the miscalibration a confidence score exists to prevent. Fix: the tool
+schema's `confidence_score` field description was rewritten with four explicit calibration bands (see
+[How It Works → Summarize](#summarize)) and a hard rule — *"If your rationale concludes this is NOT a
+genuine trend, confidence_score MUST be 0-5."* A related, separate bug surfaced at the same time: the
+score occasionally went missing from the tool call entirely, its value trapped inside a stray
+`</rationale>\n<parameter name="confidence_score">N` artifact leaked into another field. `strict:
+true` was added to the tool schema to close that off at the source, plus a defensive
+`_recover_leaked_confidence_score()` fallback in case a future model switch reintroduces it.
+
+##### Cashtag query bug
+
+*(PR [#16](https://github.com/Bardiyashavandi/x-hype-finder/pull/16))* — A 2026-08-04 on-demand digest
+run against the `$SOL` topic produced 36 theme clusters — and roughly 30 of them were confirmed false
+positives: Spanish "sol" (sun), French "sol" (ground), a Gran Hermano Argentina contestant named Sol,
+Turkish "sol bek" (left-back), and more. Root cause: every topic name, cashtags included, was being
+wrapped in double quotes before hitting the search API — turning `$SOL` into an exact-phrase text
+search on the literal substring "sol" instead of X's dedicated cashtag operator. The non-cashtag
+`AI agents` topic, quoted correctly the whole time, showed no such collision pattern by comparison —
+the asymmetry pointed straight at the quoting logic. Fix: a shared
+`src/pipeline/query_builder.py::build_search_query()` (previously duplicated verbatim between the two
+Fetch clients) now passes `$`-prefixed topic names bare, letting the API's real cashtag operator do
+the matching.
+
+##### Digest-noise diagnosis via the eval system
+
+*(PR [#20](https://github.com/Bardiyashavandi/x-hype-finder/pull/20))* — Once the `eval label`/`eval
+report` system (PR [#15](https://github.com/Bardiyashavandi/x-hype-finder/pull/15)) had enough labeled
+data to check, it surfaced a lopsided picture: Summarize, Draft Post, Detect, and Cluster all scored
+4.4-5.0 out of a perfect 5 (or 100%) independently — yet the assembled Digest itself scored only
+2.25/5 on the same "worth reading" question (SC-011). Every stage upstream was doing its job
+correctly; the gap was noise volume in the default view, not a correctness bug anywhere in the
+pipeline — dozens of Themes the model had already scored as weak (many within Summarize's own 0-5
+"not a genuine trend" band) were cluttering `digest show`'s default output regardless. Fix:
+`CONFIDENCE_DISPLAY_THRESHOLD = 20`, a purely display-side filter — nothing written to the database
+changes, `--full` still shows everything (see [Usage](#usage)).
+
+##### Hung-run timeout fix
+
+*(PR [#22](https://github.com/Bardiyashavandi/x-hype-finder/pull/22))* — A `digest run` across 3
+topics appeared to be progressing normally, then went completely silent: the log file's last line and
+last-modified time were frozen at the same timestamp for **55+ minutes**, the process was still alive
+but had burned only ~2.25 seconds of CPU in that entire span, and — tellingly — `retry_with_backoff`
+had logged no retry warnings at all, meaning it wasn't cycling through retries; it was stuck inside a
+single attempt that had neither succeeded nor failed. Root cause: both Anthropic clients were
+constructed with no explicit `timeout=`, relying on the SDK's own default — long enough that a
+genuinely hung call never tripped a client-side timeout. Worse, `run_digest()` writes everything —
+`Digest`, every `DigestTopicResult`/`SourcePost`/`Theme`/`DraftPost` row — inside one single session
+that only commits once, at the very end of the run; killing the hung process manually meant the
+**entire hour of work was discarded**, not just the tail end. Fix: an explicit
+`anthropic.Timeout(60.0, connect=10.0)` on both clients — short enough to fail fast into the existing
+retry path, long enough not to false-positive on legitimate multi-ten-second generations.
+
+Every fix above shipped with its own regression test tied to the real example that exposed the bug —
+consistent with Constitution Principle VII (no feature, and no fix, is done without a measurable,
+checkable condition).
 
 ## Roadmap
 
