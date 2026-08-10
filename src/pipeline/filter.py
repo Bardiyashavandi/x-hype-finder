@@ -104,6 +104,13 @@ _SPAM_PATTERNS = tuple(
 COORDINATED_SIMILARITY_THRESHOLD = 0.92
 COORDINATED_TIME_WINDOW = timedelta(hours=2)
 COORDINATED_MIN_DISTINCT_AUTHORS = 2
+# Known, intentionally-deferred gap (PR #21): CLEAR_KEEP_SCORE, CLEAR_EXCLUDE_SCORE,
+# TIER2_COMPOSITE_SCORE, and LINK_RATIO_THRESHOLD are untouched since that PR's detector
+# additions above. A lone, non-coordinated spam-pattern hit scores 25 -> lands in `ambiguous`,
+# and only actually gets excluded via Tier 2 if it's part of a coordinated swarm or the
+# composite reaches 50 -- so a solo spam post can still fall through as `kept`. Tuning these
+# thresholds needs a bigger labeled sample than the FILTER-stage eval set currently has (n=10,
+# target >=50 per SC-002) to validate against before it ships. See README Roadmap "Open".
 TIER2_COMPOSITE_SCORE = 50.0  # stricter than Tier 1's clear-exclude threshold
 
 

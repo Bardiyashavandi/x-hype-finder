@@ -104,14 +104,19 @@ active topic for this user.
 
 Renders a stored Digest, grouped by topic.
 
-- Without `--full`: shows each Theme's 3-5 curated example posts (the default view).
-- With `--full`: shows every underlying `SourcePost` for that topic — both the ones
-  clustered into a Theme and the ones Filter excluded — each annotated with its
-  `filter_outcome` (FR-016). The author metadata Filter Tier 1 scored the post against
-  (followers/following counts, account age, post frequency) and its engagement counts
-  (likes, retweets, replies, quotes, views — when the active Fetch provider exposes them)
-  are stored on the same row but not yet rendered here — query `SourcePost` directly if
-  you need them.
+- Without `--full`: shows each Theme's 3-5 curated example posts (the default view), and
+  hides any Theme scoring below `confidence_score` 20 (`CONFIDENCE_DISPLAY_THRESHOLD` in
+  `src/cli/digest.py`) as noise below the Summarize prompt's calibrated signal floor — the
+  prompt reserves 0-5 for "not a genuine trend" and only starts describing a real "moderate
+  spike" at 30+, so 20 clears the observed noise floor without hiding anything the model
+  calibrated as a real trend.
+- With `--full`: un-hides those low-confidence Themes too, *and* shows every underlying
+  `SourcePost` for that topic — both the ones clustered into a Theme and the ones Filter
+  excluded — each annotated with its `filter_outcome` (FR-016). The author metadata Filter
+  Tier 1 scored the post against (followers/following counts, account age, post frequency)
+  and its engagement counts (likes, retweets, replies, quotes, views — when the active Fetch
+  provider exposes them) are stored on the same row but not yet rendered here — query
+  `SourcePost` directly if you need them.
 - `--topic <name>` scopes the output to a single topic within the digest, erroring
   clearly if the name doesn't match anything in that digest.
 - Always renders the topic's outcome explicitly — `no_significant_activity`,
@@ -215,7 +220,7 @@ other command here, both sampling and reporting are scoped to the current
 user (FR-015): labeling as one user never counts against, or shows up in,
 another user's report.
 
-### `eval label <stage> [--count N]`
+### `eval label <stage> [--count N] [--id <uuid>]`
 
 Samples up to `N` (default 5) real, unlabeled items for `stage` — items you
 haven't already labeled for that stage yourself — and prompts interactively
@@ -235,9 +240,14 @@ At each prompt: `y`/`n` (binary stages) or `1`-`5` (rated stages), plus
 session early. Each label is committed immediately, so ending the session
 early (including via Ctrl+D/EOF) never loses labels already recorded.
 
+Pass `--id <uuid>` to label one specific item directly instead of random
+sampling — still scoped to the current user, and still rejected if that
+item is already labeled by them. `--count` is ignored when `--id` is given.
+
 ```sh
 python -m src.cli.eval label filter
 python -m src.cli.eval label digest --count 10
+python -m src.cli.eval label filter --id 3fa85f64-5717-4562-b3fc-2c963f66afa6
 ```
 
 ### `eval report [--stage <stage>]`

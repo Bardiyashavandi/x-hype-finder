@@ -152,7 +152,8 @@ points from independent, additive signals:
 | High posting velocity | `post_frequency > 50`/day | +20 |
 | Duplicate text | ≥50% of other posts in the same batch are ≥0.9 similar (`SequenceMatcher` ratio, link-stripped/lowercased) | +25 |
 | Link-heavy | URL characters ≥50% of post length | +10 |
-| Spam pattern | regex match on `dm me`, `guaranteed profit(s)`, `\d{2,}x gains?`, `free airdrop`, follow-back bait, etc. | +25 |
+| Spam pattern | regex match on `dm me`, `guaranteed profit(s)`, `\d{2,}x gains?`, `free airdrop`, follow-back bait, wallet-solicitation/giveaway-bait (wallet + drop/comment/send + airdrop/giveaway/winner), or a bare/labeled contract address (`0x` hex, `solana:` URI, `CA:` label, or the phrase "contract address") | +25 |
+| Cashtag stuffing | ≥6 distinct `$TICKER` cashtags in one post | +20 |
 
 The composite score is capped at 100 and bucketed:
 
@@ -350,7 +351,7 @@ python -m src.cli.topic remove "$AAPL"
 # Run and read digests
 python -m src.cli.digest run                        # all active topics
 python -m src.cli.digest run --topic "$AAPL"         # single topic, on demand
-python -m src.cli.digest show <digest-id> --full     # full source evidence, not just examples
+python -m src.cli.digest show <digest-id> --full     # low-confidence themes + full source evidence, not just examples
 
 # Posting mode
 python -m src.cli.posting mode show
@@ -372,6 +373,11 @@ python -m src.cli.scheduler run
 `digest run` above is on-demand and one-shot. To get the automatic, scheduled digest cadence plus
 the periodic retention sweep running in the background, start the scheduler as its own long-lived
 process — see [`docs/cli-usage.md#scheduler`](docs/cli-usage.md#scheduler) for cadence flags.
+
+By default, `digest show` hides any Theme scoring below `confidence_score` 20 as noise below the
+Summarize prompt's calibrated signal floor; `--full` un-hides those low-confidence themes in
+addition to showing every filtered-out `SourcePost`, not just Filter-kept ones — see
+[`docs/cli-usage.md`](docs/cli-usage.md#digest) for the exact threshold and rationale.
 
 Example output — `topic list`:
 
@@ -440,7 +446,7 @@ checks automatically — [`.github/workflows/tests.yml`](.github/workflows/tests
 
 ## Roadmap
 
-**Built — validated MVP, all 5 user stories implemented, 236 passing tests:**
+**Built — validated MVP, all 5 user stories implemented, 294 passing tests:**
 
 | User Story | Scope | PR |
 |---|---|---|
@@ -462,6 +468,14 @@ checks automatically — [`.github/workflows/tests.yml`](.github/workflows/tests
   Flagged-Signal Precision (≥70% target against a ≥50-post hand-labeled set) are both defined as
   success metrics but not yet measured against real, labeled data — currently validated only via
   unit/contract tests against synthetic fixtures.
+- **Filter Tier 1 threshold tuning (deferred from PR [#21](https://github.com/Bardiyashavandi/x-hype-finder/pull/21)).**
+  That PR added the contract-address, cashtag-stuffing, and click-link-regex detectors above but
+  deliberately left `CLEAR_KEEP_SCORE`, `CLEAR_EXCLUDE_SCORE`, `TIER2_COMPOSITE_SCORE`, and
+  `LINK_RATIO_THRESHOLD` untouched: a lone, non-coordinated spam-pattern hit scores 25, lands in
+  `ambiguous`, and only actually gets excluded via Tier 2 if it's part of a coordinated swarm or
+  the composite reaches 50 — so a solo spam post can still fall through as kept. Tuning those
+  thresholds needs a larger labeled sample than the FILTER-stage eval set currently has (n=10,
+  target ≥50 per SC-002) to validate against before it ships.
 - **Autonomous posting switch-on**, once the manual validation period actually confirms digests and
   drafts are trustworthy in practice — currently every draft is `held_manual` regardless of
   confidence.
