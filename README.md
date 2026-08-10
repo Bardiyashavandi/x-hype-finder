@@ -18,6 +18,7 @@ short, ranked, evidence-backed digest of what's actually gaining traction and wh
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
+- [Demo Recording](#demo-recording)
 - [Cost Model](#cost-model)
 - [Development Process](#development-process)
 - [Roadmap](#roadmap)
@@ -395,6 +396,13 @@ validation_period_ends_at: 2026-08-16T12:57:44.219157
 kill_switch_engaged:       False
 last_post_published_at:    -
 ```
+
+## Demo Recording
+
+A real terminal session against live tracked-topic data — `topic list`, `digest show` on a
+completed digest, and `eval report` — no synthetic fixtures, no new API calls:
+
+![X Hype Finder CLI walkthrough](docs/media/cli-demo.gif)
 
 ## Cost Model
 
