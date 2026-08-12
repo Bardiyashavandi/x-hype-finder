@@ -869,11 +869,11 @@ uvicorn src.web.app:create_app --factory --reload --port 8000
 cd web && npm run dev
 ```
 
-![Web Dashboard screenshot placeholder](docs/media/web-dashboard-placeholder.svg)
+![Web Dashboard screenshot](docs/media/web-dashboard.png)
 
-*An honest placeholder, not a real screenshot — swap for a real capture once the dashboard has
-run against live data, matching this project's no-synthetic-output convention (see
-[Demo Recording](#demo-recording) below for the same standard applied to the CLI).*
+*Real capture of the Topics view, running against live data — matching this project's
+no-synthetic-output convention (see [Demo Recording](#demo-recording) below for the same standard
+applied to the CLI).*
 
 ## Sample Output
 
