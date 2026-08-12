@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 
-import { useLogout } from '../hooks/useAuth'
+import { useAuthStatus, useLogout } from '../hooks/useAuth'
 
 export function Header() {
   const navigate = useNavigate()
   const logout = useLogout()
+  const { data: authStatus } = useAuthStatus()
 
   const handleLogout = () => {
     logout.mutate(undefined, {
@@ -14,7 +15,9 @@ export function Header() {
 
   return (
     <header className="flex items-center justify-between border-b border-surface-border bg-surface-raised px-6 py-3">
-      <div className="text-sm text-gray-400">Dashboard</div>
+      <div className="text-sm text-gray-400">
+        {authStatus?.email ? `Logged in as ${authStatus.email}` : 'Dashboard'}
+      </div>
       <button
         type="button"
         onClick={handleLogout}

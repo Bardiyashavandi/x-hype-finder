@@ -21,11 +21,18 @@ from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
+    email: str
     password: str
 
 
 class AuthStatusResponse(BaseModel):
     authenticated: bool
+    # The logged-in user's email, once real per-user accounts exist
+    # (User Story 5 / FR-015) — None when unauthenticated. Plain `str`, not
+    # `EmailStr`: format validity doesn't matter for login (a malformed
+    # email just won't match any row), consistent with this file's minimal
+    # validation elsewhere.
+    email: str | None = None
 
 
 # ---------------------------------------------------------------------------

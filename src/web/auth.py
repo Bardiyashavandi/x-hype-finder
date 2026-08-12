@@ -1,36 +1,36 @@
-"""Single-shared-password auth: password check + session-key constant
-(specs/003-web-dashboard/plan.md §1 "Auth").
+"""Per-user login: session-key constant + password verification
+(specs/003-web-dashboard, User Story 5 / FR-015).
 
 Session *signing* itself is Starlette's own `SessionMiddleware` (an
 itsdangerous-signed HttpOnly cookie, wired up in `src/web/app.py`) — this
-module only checks the submitted password against `XHF_WEB_PASSWORD` and
-names the one session key every router agrees on. No hand-rolled crypto.
+module only names the session key every router agrees on
+(`SESSION_USER_ID_KEY`, holding the logged-in `User.id`) and verifies a
+login attempt's password against that specific user's own bcrypt hash
+(`User.password_hash`, set via `python -m src.cli.user create`,
+src/utils/password.py). No hand-rolled crypto, no shared/env-var password —
+there is no "unconfigured dashboard" state anymore, since credentials live
+per-row in the database, not in an env var.
 """
 
 from __future__ import annotations
 
-import os
-import secrets
+from src.models.user import User
+from src.utils.password import verify_password
 
-# The single key `request.session` carries once a login succeeds
-# (src/web/routers/auth.py) — `src/web/deps.py`'s `require_auth` checks it.
-SESSION_AUTH_KEY = "authenticated"
+# The session key `request.session` carries once a login succeeds
+# (src/web/routers/auth.py) — holds the logged-in `User.id` (as a string),
+# not just a boolean. `src/web/deps.py`'s `get_current_user` reads it to
+# resolve the real logged-in row, never guessing (unlike the CLI's
+# single-user auto-resolve, src/cli/_common.py's `resolve_current_user`,
+# which this web path deliberately never calls).
+SESSION_USER_ID_KEY = "user_id"
 
 
-class WebAuthConfigError(RuntimeError):
-    """Raised when `XHF_WEB_PASSWORD` isn't configured."""
-
-
-def check_password(candidate: str, *, env: dict[str, str] | None = None) -> bool:
-    """`secrets.compare_digest` against `XHF_WEB_PASSWORD` (plan.md §1) —
-    constant-time, so a mistyped password can't be distinguished from a
-    close-but-wrong one by response timing.
-
-    Returns `False` (never raises) when `XHF_WEB_PASSWORD` itself isn't set —
-    an unconfigured dashboard should reject every login attempt, not 500.
-    """
-    active_env = env if env is not None else os.environ
-    expected = active_env.get("XHF_WEB_PASSWORD")
-    if not expected:
+def verify_user_password(user: User, candidate: str) -> bool:
+    """Check `candidate` against `user`'s own stored hash. Always `False`
+    for a user with no `password_hash` yet (a CLI-only account that hasn't
+    had `user create` run for it) — never a crash, just "not this account's
+    password"."""
+    if user.password_hash is None:
         return False
-    return secrets.compare_digest(candidate, expected)
+    return verify_password(candidate, user.password_hash)

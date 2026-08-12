@@ -20,7 +20,11 @@ python -m src.cli.scheduler <command> [args]
 ```
 
 The dashboard itself is started the same way — `python -m src.cli.web run [--host] [--port]`
-— but see the README section linked above rather than this document for its setup.
+— but see the README section linked above rather than this document for its setup. Dashboard
+accounts (real per-user login, User Story 5 / FR-015) are created the same way too —
+`python -m src.cli.user create <email> [--handle <x_account_handle>]` (src/cli/user.py), which
+prompts for a password (hidden input, never a CLI argument) and stores its bcrypt hash — there is
+no public signup, this is the only way an account is ever provisioned.
 
 A separate, non-scheduled, non-persisted `idea-validate` mode also exists
 (002-idea-validation-mode) — see [`idea-validate`](#idea-validate-002-idea-validation-mode)

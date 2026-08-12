@@ -9,6 +9,14 @@ import { api } from '../api/client'
 
 export interface AuthStatus {
   authenticated: boolean
+  // The logged-in user's email (real per-user accounts — User Story 5 /
+  // FR-015) — undefined/null when unauthenticated.
+  email?: string | null
+}
+
+export interface LoginCredentials {
+  email: string
+  password: string
 }
 
 export const AUTH_QUERY_KEY = ['auth', 'me'] as const
@@ -27,7 +35,8 @@ export function useAuthStatus() {
 export function useLogin() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (password: string) => api.post<AuthStatus>('/api/auth/login', { password }),
+    mutationFn: (credentials: LoginCredentials) =>
+      api.post<AuthStatus>('/api/auth/login', credentials),
     onSuccess: (data) => queryClient.setQueryData(AUTH_QUERY_KEY, data),
   })
 }
