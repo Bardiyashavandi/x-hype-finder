@@ -14,11 +14,12 @@ model name (research.md §3, /speckit-analyze finding E1).
 Claude API, Resend) — these are shared across every user's run because they
 belong to the app, not to a user. `twitterapi_io_key` is a legacy field kept
 for backward compatibility with existing callers that construct `Config`
-directly; the Fetch provider actually in use is resolved independently by
-`src.pipeline.fetch_provider.get_fetch_provider`, which reads
-`FETCH_PROVIDER` and that provider's own key (`TWITTERAPI_IO_KEY` or
-`TWITTERAPIS_COM_KEY`) straight from the environment, so neither is required
-here. X OAuth
+directly; every Fetch call site — including `src/cli/idea_validate.py`
+(specs/002-idea-validation-mode) — resolves its Fetch provider independently
+via `src.pipeline.fetch_provider`'s `get_fetch_provider`/
+`get_fetch_provider_for_query`, which read `FETCH_PROVIDER` and that
+provider's own key (`TWITTERAPI_IO_KEY` or `TWITTERAPIS_COM_KEY`) straight
+from the environment, so neither is required here. X OAuth
 posting credentials are different: each user posts as their *own* X account
 (`User.x_account_handle`, data-model.md), so those live in per-user-namespaced
 env vars and are loaded separately via `load_x_credentials_for_user` (tasks.md

@@ -178,26 +178,26 @@ def _fetch_page(api_key: str, query: str, cursor: str, *, session: requests.Sess
     return response.json()
 
 
-def fetch_topic_posts(
-    topic_name: str,
-    x_handles: list[str],
+def fetch_posts_for_query(
+    query: str,
     *,
     api_key: str,
-    since: datetime | None = None,
-    until: datetime | None = None,
     max_posts: int = MAX_POSTS_PER_RUN,
     session: requests.Session | None = None,
 ) -> FetchResult:
-    """Fetch raw posts for one topic within [since, until).
+    """Fetch raw posts for a prebuilt advanced-search query string.
+
+    The pagination/retry/rate-limit-pacing primitive `fetch_topic_posts`
+    below has always used internally — extracted so a caller with no `Topic`
+    (Idea Validation mode's `src/pipeline/idea_query_builder.py`-built query,
+    research.md §4) can drive the same mechanics directly, without
+    duplicating them.
 
     Never raises on a persistent TwitterAPI.io failure — returns a
-    `FetchResult` carrying a `FetchError` instead, so one topic's fetch
-    failure never halts Fetch for other topics in the same run (FR-002).
+    `FetchResult` carrying a `FetchError` instead, so one caller's fetch
+    failure never halts Fetch for anything else in the same run (FR-002).
     """
-    until = until or datetime.now(UTC)
-    since = since or (until - DEFAULT_LOOKBACK)
     session = session or requests.Session()
-    query = build_search_query(topic_name, x_handles, since, until)
 
     posts: list[RawPost] = []
     cursor = ""
@@ -227,3 +227,30 @@ def fetch_topic_posts(
     posts = posts[:max_posts]
     record_twitterapi_io_read(len(posts))
     return FetchResult(posts=posts, error=None)
+
+
+def fetch_topic_posts(
+    topic_name: str,
+    x_handles: list[str],
+    *,
+    api_key: str,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    max_posts: int = MAX_POSTS_PER_RUN,
+    session: requests.Session | None = None,
+) -> FetchResult:
+    """Fetch raw posts for one topic within [since, until).
+
+    Never raises on a persistent TwitterAPI.io failure — returns a
+    `FetchResult` carrying a `FetchError` instead, so one topic's fetch
+    failure never halts Fetch for other topics in the same run (FR-002).
+
+    Builds its query via `build_search_query` and delegates the actual
+    pagination/retry mechanics to `fetch_posts_for_query` above — this
+    function's own signature/behavior are unchanged by that split
+    (research.md §4).
+    """
+    until = until or datetime.now(UTC)
+    since = since or (until - DEFAULT_LOOKBACK)
+    query = build_search_query(topic_name, x_handles, since, until)
+    return fetch_posts_for_query(query, api_key=api_key, max_posts=max_posts, session=session)

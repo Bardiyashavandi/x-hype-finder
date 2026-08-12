@@ -14,6 +14,10 @@ python -m src.cli.drafts <command> [args]
 python -m src.cli.scheduler <command> [args]
 ```
 
+A separate, non-scheduled, non-persisted `idea-validate` mode also exists
+(002-idea-validation-mode) — see [`idea-validate`](#idea-validate-002-idea-validation-mode)
+below.
+
 ## Setup
 
 1. Copy `.env.example` to `.env` and fill in real values — never commit `.env` (it's
@@ -296,3 +300,84 @@ python -m src.cli.scheduler run --cadence-hours 12 --retention-sweep-cadence-hou
 Both jobs fire on a fixed interval from whenever the process starts (not a fixed
 wall-clock time like a cron entry) — run this as a persistent process (e.g. under
 your process manager of choice) rather than a one-shot command.
+
+---
+
+## `idea-validate` (002-idea-validation-mode)
+
+A separate, one-off mode from every command group above — it doesn't track a brand or
+existing topic. Give it a short list of problem-describing phrases instead (e.g. "people
+struggling to find sublets in a new city") and it searches X for real complaints/requests
+around that problem, then reports back whether there's genuine signal. Unlike every other
+command here, `idea-validate run` does **not** resolve a current user and opens **no
+database session at all** — both the Fetch-provider API key and `ANTHROPIC_API_KEY` are
+app-level credentials already (`src/config.py`), and this mode persists nothing: no
+`Digest`/`Theme`/`SourcePost`/`DraftPost`/`PostingMode` row is ever written, and there's no
+posting step (spec.md §3, §5.2 of `specs/002-idea-validation-mode/spec.md`). Output is
+stdout plus an optional local file — a one-time strategic input, not a scheduled digest.
+
+Fetch is resolved through the same `FETCH_PROVIDER` abstraction every other command uses
+(`src/pipeline/fetch_provider.py`'s `get_fetch_provider_for_query`, the query-string-accepting
+sibling of the `get_fetch_provider()` the digest pipeline calls) — this mode defaults to
+TwitterAPIs.com and respects `FETCH_PROVIDER=twitterapi_io` to switch providers, exactly like
+`topic`/`digest` mode; it does not hardcode either provider.
+
+### `idea-validate run --phrase <p> [--phrase <p> ...] [--exclude-term <t> ...] [--since <ISO8601>] [--until <ISO8601>] [--out <path>]`
+
+Runs Query Construction → Fetch → Relevance Filter → Bot/Noise Filter (reused unchanged
+from `topic`/`digest` mode) → Signal Strength → Cluster (reused unchanged) → Validate
+Summarize → Validation Readout, once, and prints the resulting readout to stdout.
+
+- `--phrase` is **required**, repeatable (1-8 problem-describing phrases) — rejected with a
+  clear message before any network call if none is given.
+- `--exclude-term` is optional, repeatable — filtered both at query-construction time (an X
+  advanced-search `-"term"` clause) and again post-fetch against actual post text (a
+  cost-reduction pass, not the sole relevance guarantee — broad problem phrases are noisier
+  than a fixed brand name).
+- `--since`/`--until` default to Fetch's existing lookback window if omitted.
+- `--out <path>` also writes the rendered readout to a local file — a plain file you own,
+  not tracked or read by any other command.
+
+The readout always prints something complete — signal strength
+(`total_relevant_count`/`distinct_author_count`/recency buckets, no baseline-relative
+`is_spike`/`spike_ratio`, since a new problem space has no history to compare against) plus
+2-4 recurring themes (`summary`, `representative_ask`, `recurrence_signal`, 3-5 example
+posts), or an explicit `No meaningful signal found.` when nothing relevant survives — never
+a blank/empty output. A Fetch failure is reported as an explicit fetch-error state rather
+than a stack trace; a single theme's Validate Summarize failure drops just that theme (with
+a logged note) rather than blanking the whole readout.
+
+```sh
+python -m src.cli.idea_validate run \
+  --phrase "can't find sublet" \
+  --phrase "no easy way to sublet" \
+  --phrase "sublet is a nightmare" \
+  --exclude-term "sublet.com"
+```
+
+Sample readout (truncated):
+
+```
+== Idea Validation Readout ==
+generated_at: 2026-08-12T14:02:11.123456+00:00
+phrases: can't find sublet, no easy way to sublet, sublet is a nightmare
+exclude_terms: sublet.com
+
+Signal strength:
+  total_relevant_count: 3
+  distinct_author_count: 3
+  posts_last_24h: 1
+  posts_last_7d: 3
+  most_recent_post_at: 2026-08-12T09:15:00+00:00
+  oldest_post_at: 2026-08-10T18:40:00+00:00
+
+Themes (1):
+
+[1] recurrence_signal=recurring  cluster_post_count=3  distinct_author_count=3
+    summary: People struggle to find short-term sublets when moving to a new city.
+    representative_ask: I just need a place for a few months, not a full year lease.
+    examples:
+      - Can't find a sublet anywhere in this city, it's impossible
+      - Sublet is a nightmare here, nobody wants short-term
+      - No easy way to sublet an apartment for just a summer
+```
