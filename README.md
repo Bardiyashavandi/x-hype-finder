@@ -157,6 +157,48 @@ Stage by stage:
   confidence-gated autonomous posting, safeguarded by a live "automated" bio-label check, jittered
   timing, a 5-posts/24h cap, and a kill switch.
 
+### Idea Validation Mode Flow
+
+Idea Validation Mode (`idea-validate run`) is a separate, one-off, non-persisted flow — it reuses
+Fetch, Filter, and Cluster unchanged from the pipeline above, but swaps in a phrase-list query, a
+new relevance filter, absolute signal strength in place of baseline-relative spike detection, and
+two new LLM stages culminating in a top-level executive-summary verdict, with no database writes
+at any point.
+
+```mermaid
+graph TD
+    Problem(["Problem Statement<br/>(phrases + exclude terms,<br/>no tracked Topic)"]) --> IVQuery
+
+    IVQuery["Query Construction<br/>OR's phrases together,<br/>appends exclude-term clauses"] --> IVFetch["Fetch<br/>(reused — same FETCH_PROVIDER<br/>abstraction, defaults TwitterAPIs.com)"]
+    IVFetch --> IVRelevance["Relevance Filter<br/>exclude-terms substring match<br/>on fetched post text"]
+    IVRelevance --> IVFilter["Filter<br/>(reused — Tier 1 rules +<br/>Tier 2 embedding check)"]
+    IVFilter --> IVSignal["Signal Strength<br/>absolute volume/recency —<br/>no baseline to compare against"]
+    IVSignal --> IVCluster["Cluster<br/>(reused — embedding-based<br/>near-duplicate grouping)"]
+
+    subgraph IVAgentLayer["Agent Layer — AI-powered (Claude)"]
+        direction TB
+        IVSummarize["Validate Summarize<br/>'what people want/are<br/>frustrated by' prompt, per theme"]
+        IVSynthesize["Validate Synthesize<br/>executive-summary verdict<br/>across every theme"]
+        IVSummarize --> IVSynthesize
+    end
+
+    IVCluster --> IVSummarize
+    IVSignal -. "signal stats" .-> IVSynthesize
+
+    IVSynthesize --> IVReadout["Validation Readout<br/>Verdict + Signal Strength + Themes —<br/>printed to stdout / optional file,<br/>no database writes"]
+    IVSignal -. "signal stats" .-> IVReadout
+
+    classDef reusedNode fill:#f1f5f9,stroke:#94a3b8,color:#475569,stroke-width:1px,stroke-dasharray:4 3
+    classDef newPipelineNode fill:#dbeafe,stroke:#2563eb,color:#1e3a8a,stroke-width:1px
+    classDef newAgentNode fill:#fce7f3,stroke:#db2777,color:#831843,stroke-width:1px
+
+    class IVFetch,IVFilter,IVCluster reusedNode
+    class IVQuery,IVRelevance,IVSignal,IVReadout newPipelineNode
+    class IVSummarize,IVSynthesize newAgentNode
+
+    style IVAgentLayer fill:#fdf2f8,stroke:#db2777,stroke-width:2px
+```
+
 ## Algorithms
 
 The three stages that actually decide what's noise, what's a spike, and what's one story rather
