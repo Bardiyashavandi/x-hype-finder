@@ -21,6 +21,7 @@ short, ranked, evidence-backed digest of what's actually gaining traction and wh
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
 - [Usage](#usage)
+- [Web Dashboard](#web-dashboard)
 - [Sample Output](#sample-output)
 - [Demo Recording](#demo-recording)
 - [Cost Model](#cost-model)
@@ -725,8 +726,10 @@ feature.
 
 ## Usage
 
-The CLI is the entire user-facing interface (no web dashboard in MVP scope). Full command
-reference, every flag, and every error case: [`docs/cli-usage.md`](docs/cli-usage.md).
+The CLI is the original, and still the most complete, user-facing interface — a
+[Web Dashboard](#web-dashboard) now also exists as a lighter-weight alternative for the same
+underlying actions. Full CLI command reference, every flag, and every error case:
+[`docs/cli-usage.md`](docs/cli-usage.md).
 
 ```sh
 # Track topics
@@ -803,6 +806,64 @@ validation_period_ends_at: 2026-08-16T12:57:44.219157
 kill_switch_engaged:       False
 last_post_published_at:    -
 ```
+
+## Web Dashboard
+
+A FastAPI + React/TypeScript/Tailwind single-page dashboard (`src/web/`, `web/`) over the exact
+same business logic the CLI drives — topics, digests (on-demand runs watched live via
+background-job polling), manually-held drafts (a real "type to confirm" modal before marking one
+published — never a silent one-click), Idea Validation Mode, and the eval report. Every endpoint
+is a thin wrapper over the same functions [`docs/cli-usage.md`](docs/cli-usage.md) documents —
+not a reimplementation of any pipeline logic, and not a read-only viewer. Auth is a single shared
+password, appropriate for this project's single-operator, self-hosted scale rather than a
+multi-tenant login system — see [`specs/003-web-dashboard/plan.md`](specs/003-web-dashboard/plan.md)
+for the full design.
+
+### Setup
+
+1. Add two dashboard-only variables to `.env` (see `.env.example`):
+
+   ```sh
+   XHF_WEB_PASSWORD=<a password you choose>
+   XHF_WEB_SESSION_SECRET=<a long random string>
+   ```
+
+2. Build the frontend once (re-run after pulling frontend changes):
+
+   ```sh
+   cd web
+   npm install
+   npm run build
+   cd ..
+   ```
+
+3. Start the dashboard — one process serves both the API and the built frontend:
+
+   ```sh
+   python -m src.cli.web run                        # http://127.0.0.1:8000 by default
+   python -m src.cli.web run --host 0.0.0.0 --port 8080
+   ```
+
+4. Open it in a browser and sign in with `XHF_WEB_PASSWORD`.
+
+Always runs single-worker (not configurable): the background-job registry backing on-demand
+digest runs and Idea Validation runs (`src/web/jobs.py`) is an in-process dict, so a second worker
+process wouldn't see the same jobs.
+
+**Dev mode** (frontend iteration with hot reload): run the backend directly via uvicorn with
+`--reload` on `:8000`, and `npm run dev` (Vite, `:5173`) in a second terminal — Vite proxies `/api`
+straight through to `:8000`, so the two act as one origin:
+
+```sh
+uvicorn src.web.app:create_app --factory --reload --port 8000
+cd web && npm run dev
+```
+
+![Web Dashboard screenshot placeholder](docs/media/web-dashboard-placeholder.svg)
+
+*An honest placeholder, not a real screenshot — swap for a real capture once the dashboard has
+run against live data, matching this project's no-synthetic-output convention (see
+[Demo Recording](#demo-recording) below for the same standard applied to the CLI).*
 
 ## Sample Output
 
