@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 import src.models  # noqa: F401 - populates Base.metadata for create_all below
 from src.db.session import Base
@@ -22,8 +23,20 @@ def _default_x_credentials(monkeypatch):
 @pytest.fixture()
 def db_engine():
     """A fresh in-memory SQLite engine, isolated per test, with every model's
-    table created (src.models' import registers them all on Base.metadata)."""
-    engine = create_engine("sqlite:///:memory:")
+    table created (src.models' import registers them all on Base.metadata).
+
+    `StaticPool` + `check_same_thread=False` (mirroring src/db/session.py's
+    own sqlite `connect_args`) so every session drawn from this engine shares
+    one underlying connection regardless of which thread runs it — plain
+    `:memory:` sqlite otherwise hands each thread its own separate, empty
+    database (SQLAlchemy's default `SingletonThreadPool`), which breaks
+    tests/web/*'s FastAPI `TestClient` (path operations run on a worker
+    thread) the moment a request needs the same data the test set up."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()

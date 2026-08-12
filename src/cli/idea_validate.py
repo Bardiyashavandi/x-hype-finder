@@ -50,7 +50,11 @@ from src.pipeline.filter import filter_posts
 from src.pipeline.idea_query_builder import IdeaValidationQuery, build_idea_validation_query
 from src.pipeline.relevance_filter import RelevanceOutcome, filter_relevance
 from src.pipeline.signal_strength import compute_signal_strength
-from src.report.validation_readout import build_validation_readout, render_validation_readout
+from src.report.validation_readout import (
+    ValidationReadout,
+    build_validation_readout,
+    render_validation_readout,
+)
 
 # Same 3-5 curated-example convention as orchestrator.py's
 # _MIN_EXAMPLE_POSTS/_MAX_EXAMPLE_POSTS.
@@ -81,14 +85,18 @@ def _select_example_post_texts(post_texts: list[str]) -> list[str]:
     return post_texts[:limit]
 
 
-def run_idea_validation(
+def run_idea_validation_structured(
     query: IdeaValidationQuery,
     *,
     anthropic_api_key: str,
     claude_model: str,
-) -> str:
+) -> ValidationReadout:
     """Run the full Idea Validation pipeline for `query` and return the
-    rendered readout.
+    structured `ValidationReadout` — the shared body both the CLI's
+    `run_idea_validation` (which just renders it to text) and the web
+    dashboard's API (which needs structured JSON: verdict text,
+    signal-strength numbers, a themes array — not a text blob dropped into
+    a `<pre>`, specs/003-web-dashboard/plan.md §1) call.
 
     Never raises out to the caller on a Fetch failure or a single theme's
     Validate Summarize failure — both are surfaced in the readout/log
@@ -108,10 +116,14 @@ def run_idea_validation(
         log.error("fetch failed for idea validation query: %s", fetch_result.error.detail)
         now = datetime.now(UTC)
         empty_signal = compute_signal_strength([], now=now)
-        readout = build_validation_readout(query, empty_signal, [], now=now)
-        return (
-            f"Fetch error ({fetch_result.error.kind.value}): {fetch_result.error.detail}\n\n"
-            f"{render_validation_readout(readout)}"
+        return build_validation_readout(
+            query,
+            empty_signal,
+            [],
+            now=now,
+            fetch_error=(
+                f"Fetch error ({fetch_result.error.kind.value}): {fetch_result.error.detail}"
+            ),
         )
 
     raw_posts = fetch_result.posts or []
@@ -180,8 +192,24 @@ def run_idea_validation(
         except ValidateSynthesizeError as exc:
             log.error("Validate Synthesize failed, omitting the verdict: %s", exc)
 
-    readout = build_validation_readout(query, signal_strength, themes, now=now, verdict=verdict)
-    return render_validation_readout(readout)
+    return build_validation_readout(query, signal_strength, themes, now=now, verdict=verdict)
+
+
+def run_idea_validation(
+    query: IdeaValidationQuery,
+    *,
+    anthropic_api_key: str,
+    claude_model: str,
+) -> str:
+    """CLI entry point: run the full pipeline and return the rendered-text
+    readout. Exactly today's body, minus the final render call, which now
+    lives in `run_idea_validation_structured` — this function is a one-line
+    wrapper so CLI behavior stays byte-for-byte unchanged."""
+    return render_validation_readout(
+        run_idea_validation_structured(
+            query, anthropic_api_key=anthropic_api_key, claude_model=claude_model
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

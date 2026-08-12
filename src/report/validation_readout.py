@@ -11,7 +11,7 @@ vanishes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from src.agent.validate_summarize import ValidationTheme
@@ -36,6 +36,11 @@ class ValidationReadout:
     # signal-present run where the synthesis call itself failed (rendered
     # as VERDICT_UNAVAILABLE_MESSAGE instead of silently vanishing).
     verdict: str | None = None
+    # Set only when Fetch itself failed (src/cli/idea_validate.py) — the
+    # already-formatted "Fetch error (<kind>): <detail>" message, rendered
+    # ahead of everything else. `themes`/`signal_strength` are the empty-input
+    # values in this case, same as the zero-signal path.
+    fetch_error: str | None = None
 
 
 def _theme_sort_key(pair: tuple[int, ValidationTheme]) -> tuple[int, int, int]:
@@ -53,13 +58,16 @@ def build_validation_readout(
     *,
     now: datetime,
     verdict: str | None = None,
+    fetch_error: str | None = None,
 ) -> ValidationReadout:
     """Assemble the final readout. `themes` is ordered by `cluster_post_count`
     descending, ties broken by `distinct_author_count` then original input
     order (data-model.md § ValidationReadout). `verdict` is the caller's
     already-computed executive-summary text (or `None` in the zero-signal
     case, or when Validate Synthesize failed) — this function stays a plain
-    deterministic assembler, same as before; it never calls Claude itself."""
+    deterministic assembler, same as before; it never calls Claude itself.
+    `fetch_error` is set only on the Fetch-failure path (`themes`/
+    `signal_strength` are the empty-input values there)."""
     ordered = [theme for _, theme in sorted(enumerate(themes), key=_theme_sort_key, reverse=True)]
     return ValidationReadout(
         query=query,
@@ -67,6 +75,7 @@ def build_validation_readout(
         themes=ordered,
         generated_at=now,
         verdict=verdict,
+        fetch_error=fetch_error,
     )
 
 
@@ -107,6 +116,10 @@ def _render_theme(rank: int, theme: ValidationTheme) -> str:
     return "\n".join(lines)
 
 
+def _without_fetch_error(readout: ValidationReadout) -> ValidationReadout:
+    return replace(readout, fetch_error=None)
+
+
 def render_validation_readout(readout: ValidationReadout) -> str:
     """Render the full readout as plain text — never a blank output, even
     when no signal was found (spec.md §7): a zero-signal case
@@ -117,6 +130,13 @@ def render_validation_readout(readout: ValidationReadout) -> str:
     `Signal strength:` and `Themes (N):` — so a strategist reads the
     conclusion before drilling into supporting detail (spec.md §5.3, §7).
     """
+    if readout.fetch_error is not None:
+        # Fetch never even ran the rest of the pipeline — state the error up
+        # front, followed by the same empty-input readout a zero-signal case
+        # would produce, rather than a crash or blank output.
+        rest = render_validation_readout(_without_fetch_error(readout))
+        return f"{readout.fetch_error}\n\n{rest}"
+
     header = [
         "== Idea Validation Readout ==",
         f"generated_at: {readout.generated_at.isoformat()}",
