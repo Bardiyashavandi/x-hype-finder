@@ -338,14 +338,25 @@ Summarize → Validation Readout, once, and prints the resulting readout to stdo
 - `--out <path>` also writes the rendered readout to a local file — a plain file you own,
   not tracked or read by any other command.
 
-The readout always prints something complete — signal strength
-(`total_relevant_count`/`distinct_author_count`/recency buckets, no baseline-relative
-`is_spike`/`spike_ratio`, since a new problem space has no history to compare against) plus
-2-4 recurring themes (`summary`, `representative_ask`, `recurrence_signal`, 3-5 example
-posts), or an explicit `No meaningful signal found.` when nothing relevant survives — never
-a blank/empty output. A Fetch failure is reported as an explicit fetch-error state rather
-than a stack trace; a single theme's Validate Summarize failure drops just that theme (with
-a logged note) rather than blanking the whole readout.
+The readout always prints something complete. On the signal-present path it leads with a
+**`Verdict:`** block — a 3-5 sentence executive-summary paragraph (Validate Synthesize,
+`src/agent/validate_synthesize.py`) synthesizing every theme found into one strategic read:
+is this a real, validated problem; is the signal concentrated or fragmented; do any themes
+show existing competitors/solutions already targeting it; and an honest pursue/pass
+recommendation — grounded strictly in the themes actually generated, never invented beyond
+them. This prints *above* Signal Strength and Themes, so a strategist reads the conclusion
+first and only drills into supporting detail if they want it (spec.md §5.3, §7). Below that:
+signal strength (`total_relevant_count`/`distinct_author_count`/recency buckets, no
+baseline-relative `is_spike`/`spike_ratio`, since a new problem space has no history to
+compare against) plus 2-4 recurring themes (`summary`, `representative_ask`,
+`recurrence_signal`, 3-5 example posts) — or an explicit `No meaningful signal found.` when
+nothing relevant survives, with no Verdict block at all in that case (the no-signal message
+already is the top-line verdict, and Validate Synthesize is never even called in that
+scenario) — never a blank/empty output either way. A Fetch failure is reported as an explicit
+fetch-error state rather than a stack trace; a single theme's Validate Summarize failure
+drops just that theme (with a logged note) rather than blanking the whole readout; a Validate
+Synthesize failure similarly omits just the Verdict block (`Verdict: unavailable
+(executive-summary synthesis failed — see themes below).`) rather than the whole readout.
 
 ```sh
 python -m src.cli.idea_validate run \
@@ -362,6 +373,13 @@ Sample readout (truncated):
 generated_at: 2026-08-12T14:02:11.123456+00:00
 phrases: can't find sublet, no easy way to sublet, sublet is a nightmare
 exclude_terms: sublet.com
+
+Verdict:
+  There is real, recurring frustration around finding short-term sublets when moving to a
+  new city, concentrated in a single strong theme with three distinct authors rather than
+  scattered across many isolated posts. None of the found posts describe an existing
+  competitor or product already solving this. Given the concentrated signal and clear,
+  repeated ask, this is worth pursuing further.
 
 Signal strength:
   total_relevant_count: 3
