@@ -2,9 +2,14 @@
 
 **Feature**: 001-x-hype-finder-mvp (tasks.md T068, contracts/cli-commands.md)
 
-No web/GUI dashboard exists in this MVP (Product Brief §13) — the CLI is the entire
-user-facing interface. There are five command groups: `topic`, `digest`, `posting`,
-`drafts`, `scheduler`. Each is invoked as a Python module:
+A web dashboard also exists now (specs/003-web-dashboard) — see the README's
+[Web Dashboard](../README.md#web-dashboard) section for what it is and how to run it. Every
+dashboard action is a thin wrapper over these same CLI commands' underlying functions, never a
+reimplementation, so this document remains the authoritative reference for the full command
+surface, every flag, and every error case; the dashboard's own API is documented in
+[`specs/003-web-dashboard/plan.md`](../specs/003-web-dashboard/plan.md) rather than duplicated
+here. There are five command groups: `topic`, `digest`, `posting`, `drafts`, `scheduler`. Each is
+invoked as a Python module:
 
 ```sh
 python -m src.cli.topic <command> [args]
@@ -13,6 +18,9 @@ python -m src.cli.posting <command> [args]
 python -m src.cli.drafts <command> [args]
 python -m src.cli.scheduler <command> [args]
 ```
+
+The dashboard itself is started the same way — `python -m src.cli.web run [--host] [--port]`
+— but see the README section linked above rather than this document for its setup.
 
 A separate, non-scheduled, non-persisted `idea-validate` mode also exists
 (002-idea-validation-mode) — see [`idea-validate`](#idea-validate-002-idea-validation-mode)

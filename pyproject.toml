@@ -21,12 +21,16 @@ dependencies = [
     "alembic>=1.13,<2",
     "python-dotenv>=1.0,<2",
     "pytest>=8.0,<9",
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.32,<1",
+    "itsdangerous>=2.2,<3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.6,<1",
     "black>=24.0,<25",
+    "httpx>=0.27,<1",
 ]
 
 [build-system]

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <!-- Honest placeholder, not a real screenshot (README "Web Dashboard" section,
+       specs/003-web-dashboard/plan.md §6) — matches this project's no-synthetic-output
+       convention (see the README's "Sample Output"/"Demo Recording" sections, which are
+       real captured output, never mockups). Swap this file for a real screenshot once
+       the dashboard has been run against live data. -->
+  <rect width="960" height="540" fill="#0b0f17" />
+  <rect x="1" y="1" width="958" height="538" fill="none" stroke="#1f2937" stroke-width="2" stroke-dasharray="10 8" />
+  <text x="480" y="255" text-anchor="middle" font-family="system-ui, sans-serif" font-size="28" font-weight="600" fill="#e5e7eb">
+    Web Dashboard screenshot — pending
+  </text>
+  <text x="480" y="295" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">
+    To be captured against a real run, not fabricated — see README § Web Dashboard.
+  </text>
+</svg>
