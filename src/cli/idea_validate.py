@@ -11,8 +11,13 @@ query-string-accepting sibling of the `get_fetch_provider()` the digest
 pipeline calls) — this mode respects `FETCH_PROVIDER` and defaults to
 TwitterAPIs.com like everything else, rather than hardcoding TwitterAPI.io.
 Wires Query Construction -> Fetch -> Relevance Filter -> Bot/Noise Filter ->
-Signal Strength -> Cluster -> Validate Summarize -> Validation Readout for
-one synchronous run, then prints (and optionally writes) the result. No
+Signal Strength -> Cluster -> Validate Summarize -> Validate Synthesize ->
+Validation Readout for one synchronous run, then prints (and optionally
+writes) the result. Validate Synthesize (src/agent/validate_synthesize.py)
+is the run-level executive-summary/verdict step over every theme Validate
+Summarize produced — only called when at least one theme survives; its own
+failure omits just the Verdict section (contracts/pipeline-stages.md's
+failure-isolation principle, extended to this stage). No
 `Digest`/`Theme`/`SourcePost`/`DraftPost`/`PostingMode` row is ever touched
 (spec.md §3 non-goals, contracts/cli-commands.md's "MUST NOT write to any
 application-owned table").
@@ -29,6 +34,11 @@ from src.agent.validate_summarize import (
     ValidateSummarizeInput,
     ValidationTheme,
     summarize_validation_theme,
+)
+from src.agent.validate_synthesize import (
+    ValidateSynthesizeError,
+    ValidateSynthesizeInput,
+    synthesize_validation_verdict,
 )
 from src.config import ConfigError, load_config
 from src.logging_config import configure_logging, get_logger
@@ -151,7 +161,26 @@ def run_idea_validation(
             )
         )
 
-    readout = build_validation_readout(query, signal_strength, themes, now=now)
+    verdict: str | None = None
+    if themes:
+        try:
+            verdict_result = synthesize_validation_verdict(
+                ValidateSynthesizeInput(
+                    problem_phrases=query.phrases,
+                    themes=themes,
+                    total_relevant_count=signal_strength.total_relevant_count,
+                    distinct_author_count=signal_strength.distinct_author_count,
+                    posts_last_24h=signal_strength.posts_last_24h,
+                    posts_last_7d=signal_strength.posts_last_7d,
+                ),
+                api_key=anthropic_api_key,
+                model=claude_model,
+            )
+            verdict = verdict_result.verdict
+        except ValidateSynthesizeError as exc:
+            log.error("Validate Synthesize failed, omitting the verdict: %s", exc)
+
+    readout = build_validation_readout(query, signal_strength, themes, now=now, verdict=verdict)
     return render_validation_readout(readout)
 
 

@@ -2,18 +2,21 @@
 quickstart.md Scenarios 1, 3, 4; spec.md §7).
 
 Runs Query Construction -> Fetch -> Relevance Filter -> Bot/Noise Filter ->
-Signal Strength -> Cluster -> Validate Summarize -> Validation Readout
-against a synthetic "sublet" problem-space fixture (spec.md §2, §5.2), with
-Fetch and Claude both mocked — no live network call. Fetch is mocked at the
-`get_fetch_provider_for_query` abstraction boundary (src/pipeline/fetch_provider.py),
-the same boundary orchestrator.py's own tests stub `get_fetch_provider` at
+Signal Strength -> Cluster -> Validate Summarize -> Validate Synthesize ->
+Validation Readout against a synthetic "sublet" problem-space fixture
+(spec.md §2, §5.2), with Fetch and Claude both mocked — no live network
+call. Fetch is mocked at the `get_fetch_provider_for_query` abstraction
+boundary (src/pipeline/fetch_provider.py), the same boundary
+orchestrator.py's own tests stub `get_fetch_provider` at
 (tests/integration/test_on_demand_digest.py) — this locks in that
 `idea_validate.py` goes through the shared FETCH_PROVIDER abstraction rather
 than a hardcoded provider. Asserts the readout is non-empty for the
 signal-present case, explicitly states "no meaningful signal found" for the
 zero-signal case, surfaces a Fetch error rather than crashing, drops one
-failed theme without blanking the whole readout, and that this mode never
-writes to any application-owned table (spec.md §3 non-goals,
+failed theme without blanking the whole readout, that a Validate Synthesize
+failure omits just the Verdict section rather than the whole readout, that
+Validate Synthesize is never called when there are no themes, and that this
+mode never writes to any application-owned table (spec.md §3 non-goals,
 contracts/cli-commands.md).
 """
 
@@ -26,6 +29,7 @@ from sqlalchemy import select
 
 import src.cli.idea_validate as idea_validate_module
 from src.agent.validate_summarize import ValidationSummarizeResult
+from src.agent.validate_synthesize import ValidateSynthesizeError, ValidationVerdictResult
 from src.cli.idea_validate import run_idea_validation
 from src.models.digest import Digest
 from src.models.draft_post import DraftPost
@@ -34,10 +38,12 @@ from src.models.theme import Theme
 from src.pipeline.fetch import AuthorMetadata, FetchError, FetchErrorKind, FetchResult, RawPost
 from src.pipeline.filter import filter_posts
 from src.pipeline.idea_query_builder import IdeaValidationQuery
+from src.report.validation_readout import VERDICT_UNAVAILABLE_MESSAGE
 
 NOW = datetime(2026, 8, 12, 12, 0, tzinfo=UTC)
 API_KEY = "test-anthropic-key"
 MODEL = "claude-sonnet-5"
+DEFAULT_VERDICT = "Default stub verdict: a real, validated problem worth pursuing further."
 
 
 def _query(phrases: list[str], exclude_terms: list[str] | None = None) -> IdeaValidationQuery:
@@ -72,17 +78,40 @@ def _all_one_group_cluster(posts):
     return [ThemeCandidate(posts=tuple(posts))] if posts else []
 
 
+def _verdict_stub(result_or_exc):
+    """A `synthesize_validation_verdict`-shaped stub — pass a
+    `ValidationVerdictResult` to succeed, or an exception instance to raise
+    it (simulating a persistent Validate Synthesize failure)."""
+
+    def fake(data, *, api_key, model, client=None):
+        assert api_key == API_KEY
+        assert model == MODEL
+        if isinstance(result_or_exc, BaseException):
+            raise result_or_exc
+        return result_or_exc
+
+    return fake
+
+
 @pytest.fixture(autouse=True)
 def _hermetic_pipeline(monkeypatch):
     """No live Ollama/Claude/network calls — Filter's own Tier 1/Tier 2
     logic still runs for real, same pattern as
-    tests/integration/test_on_demand_digest.py's `_hermetic_pipeline`."""
+    tests/integration/test_on_demand_digest.py's `_hermetic_pipeline`.
+    Validate Synthesize gets a default stub too, overridable per-test —
+    tests that don't care about the verdict's exact text still exercise the
+    real wiring against a default value."""
     monkeypatch.setattr(
         idea_validate_module,
         "filter_posts",
         lambda posts: filter_posts(posts, embed_fn=_orthogonal_embed_fn),
     )
     monkeypatch.setattr(idea_validate_module, "cluster_posts", _all_one_group_cluster)
+    monkeypatch.setattr(
+        idea_validate_module,
+        "synthesize_validation_verdict",
+        _verdict_stub(ValidationVerdictResult(verdict=DEFAULT_VERDICT)),
+    )
 
 
 def _patch_fetch_provider(monkeypatch, fake_provider):
@@ -183,6 +212,58 @@ def test_signal_present_case_produces_a_non_empty_readout_with_no_db_writes(
     assert "recurring" in rendered
     assert "struggle to find short-term sublets" in rendered
 
+    # Verdict block present, using the default stub from _hermetic_pipeline,
+    # and printed before Signal strength/Themes so a strategist reads the
+    # conclusion first (spec.md §5.3, §7).
+    assert "Verdict:" in rendered
+    assert DEFAULT_VERDICT in rendered
+    assert (
+        rendered.index("Verdict:") < rendered.index("Signal strength:") < rendered.index("Themes (")
+    )
+
+    after = _table_row_counts(db_session)
+    assert after == before
+
+
+def test_verdict_synthesis_failure_omits_only_the_verdict_not_the_whole_readout(
+    db_session, monkeypatch
+):
+    """A persistent Validate Synthesize failure must not blank the readout
+    — every theme still renders, with the explicit unavailable message in
+    place of the real verdict text (contracts/pipeline-stages.md's
+    failure-isolation principle, extended to this stage)."""
+    before = _table_row_counts(db_session)
+
+    sublet_posts = [
+        _post("1", "Can't find a sublet anywhere in this city, it's impossible", author="alice"),
+        _post("2", "Sublet is a nightmare here, nobody wants short-term", author="bob"),
+    ]
+    _patch_fetch_provider(monkeypatch, _fetch_stub(sublet_posts))
+    monkeypatch.setattr(
+        idea_validate_module,
+        "summarize_validation_theme",
+        _summarize_stub(
+            ValidationSummarizeResult(
+                summary="People struggle to find short-term sublets.",
+                representative_ask="I just need a place for a few months.",
+                recurrence_signal="emerging",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        idea_validate_module,
+        "synthesize_validation_verdict",
+        _verdict_stub(ValidateSynthesizeError("simulated persistent Claude failure")),
+    )
+
+    query = _query(["can't find sublet"])
+    rendered = run_idea_validation(query, anthropic_api_key=API_KEY, claude_model=MODEL)
+
+    assert "No meaningful signal found" not in rendered
+    assert "Verdict:" in rendered
+    assert VERDICT_UNAVAILABLE_MESSAGE in rendered
+    assert "People struggle to find short-term sublets." in rendered
+
     after = _table_row_counts(db_session)
     assert after == before
 
@@ -190,6 +271,12 @@ def test_signal_present_case_produces_a_non_empty_readout_with_no_db_writes(
 def test_zero_signal_case_states_no_meaningful_signal_found_explicitly(db_session, monkeypatch):
     before = _table_row_counts(db_session)
 
+    verdict_calls = []
+    monkeypatch.setattr(
+        idea_validate_module,
+        "synthesize_validation_verdict",
+        lambda *args, **kwargs: verdict_calls.append(1),
+    )
     _patch_fetch_provider(monkeypatch, _fetch_stub([]))
 
     query = _query(["a nonsense phrase absolutely nobody would ever post about ever"])
@@ -198,6 +285,10 @@ def test_zero_signal_case_states_no_meaningful_signal_found_explicitly(db_sessio
 
     assert "No meaningful signal found" in rendered
     assert rendered.strip() != ""
+    assert "Verdict:" not in rendered
+    # Validate Synthesize must never be called when there are no themes —
+    # no wasted Claude call on a run that already has nothing to synthesize.
+    assert verdict_calls == []
 
     after = _table_row_counts(db_session)
     assert after == before

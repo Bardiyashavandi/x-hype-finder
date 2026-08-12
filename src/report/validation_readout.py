@@ -21,12 +21,21 @@ from src.pipeline.signal_strength import SignalStrength
 NO_SIGNAL_MESSAGE = "No meaningful signal found."
 
 
+VERDICT_UNAVAILABLE_MESSAGE = "unavailable (executive-summary synthesis failed — see themes below)."
+
+
 @dataclass(frozen=True)
 class ValidationReadout:
     query: IdeaValidationQuery
     signal_strength: SignalStrength
     themes: list[ValidationTheme]
     generated_at: datetime
+    # None in two distinct cases, rendered differently (see
+    # render_validation_readout): the zero-signal case (no verdict makes
+    # sense — NO_SIGNAL_MESSAGE already is the top-line verdict), and a
+    # signal-present run where the synthesis call itself failed (rendered
+    # as VERDICT_UNAVAILABLE_MESSAGE instead of silently vanishing).
+    verdict: str | None = None
 
 
 def _theme_sort_key(pair: tuple[int, ValidationTheme]) -> tuple[int, int, int]:
@@ -43,13 +52,21 @@ def build_validation_readout(
     themes: list[ValidationTheme],
     *,
     now: datetime,
+    verdict: str | None = None,
 ) -> ValidationReadout:
     """Assemble the final readout. `themes` is ordered by `cluster_post_count`
     descending, ties broken by `distinct_author_count` then original input
-    order (data-model.md § ValidationReadout)."""
+    order (data-model.md § ValidationReadout). `verdict` is the caller's
+    already-computed executive-summary text (or `None` in the zero-signal
+    case, or when Validate Synthesize failed) — this function stays a plain
+    deterministic assembler, same as before; it never calls Claude itself."""
     ordered = [theme for _, theme in sorted(enumerate(themes), key=_theme_sort_key, reverse=True)]
     return ValidationReadout(
-        query=query, signal_strength=signal_strength, themes=ordered, generated_at=now
+        query=query,
+        signal_strength=signal_strength,
+        themes=ordered,
+        generated_at=now,
+        verdict=verdict,
     )
 
 
@@ -94,7 +111,12 @@ def render_validation_readout(readout: ValidationReadout) -> str:
     """Render the full readout as plain text — never a blank output, even
     when no signal was found (spec.md §7): a zero-signal case
     (`total_relevant_count == 0` or `themes == []`) states that explicitly
-    instead."""
+    instead.
+
+    On the signal-present path, `Verdict:` is printed first — above
+    `Signal strength:` and `Themes (N):` — so a strategist reads the
+    conclusion before drilling into supporting detail (spec.md §5.3, §7).
+    """
     header = [
         "== Idea Validation Readout ==",
         f"generated_at: {readout.generated_at.isoformat()}",
@@ -104,12 +126,18 @@ def render_validation_readout(readout: ValidationReadout) -> str:
         header.append(f"exclude_terms: {', '.join(readout.query.exclude_terms)}")
 
     if readout.signal_strength.total_relevant_count == 0 or not readout.themes:
+        # No Verdict block here — NO_SIGNAL_MESSAGE already is the top-line
+        # verdict; Validate Synthesize is never even called in this case
+        # (src/cli/idea_validate.py), so readout.verdict is always None.
         return "\n".join(
             [*header, "", NO_SIGNAL_MESSAGE, "", _render_signal_strength(readout.signal_strength)]
         )
 
+    verdict_text = readout.verdict if readout.verdict is not None else VERDICT_UNAVAILABLE_MESSAGE
     body = [
         *header,
+        "",
+        f"Verdict:\n  {verdict_text}",
         "",
         _render_signal_strength(readout.signal_strength),
         "",

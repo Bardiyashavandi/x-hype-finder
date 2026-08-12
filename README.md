@@ -441,9 +441,15 @@ swaps in a phrase-list query (instead of one topic entity), a deterministic post
 filter (exclude-terms, catching what the query-level `-"term"` exclusion misses), absolute
 volume/recency in place of a baseline-relative spike ratio (a new problem space has no history to
 compare against), and a new "what people want/are frustrated by" Summarize-prompt variant instead
-of "why is this trending." It opens no database session and writes no
-`Digest`/`Theme`/`SourcePost`/`DraftPost`/`PostingMode` row — output is a printed (and optionally
-file-written) validation readout, not a persisted digest. Full command reference:
+of "why is this trending." A final Validate Synthesize step
+([`src/agent/validate_synthesize.py`](src/agent/validate_synthesize.py)) then rolls every theme
+found up into one executive-summary **Verdict** — is this a real, validated problem; is the signal
+concentrated or fragmented; do any themes show an existing competitor already targeting it; worth
+pursuing further or too crowded/thin — grounded strictly in the themes actually generated, printed
+above Signal Strength and Themes so a strategist reads the conclusion first. It opens no database
+session and writes no `Digest`/`Theme`/`SourcePost`/`DraftPost`/`PostingMode` row — output is a
+printed (and optionally file-written) validation readout, not a persisted digest. Full command
+reference:
 [`docs/cli-usage.md#idea-validate-002-idea-validation-mode`](docs/cli-usage.md#idea-validate-002-idea-validation-mode).
 
 ## Database Schema
@@ -722,8 +728,11 @@ process — see [`docs/cli-usage.md#scheduler`](docs/cli-usage.md#scheduler) for
 **Idea Validation mode** (`idea-validate run`) is a separate mode from everything else on this
 page: instead of tracking a brand/topic that already exists, give it a short list of
 problem-describing phrases (e.g. "people struggling to find sublets in a new city") and it
-searches X for real complaints/requests around that problem, then reports back signal strength
-and 2-4 recurring themes — or an explicit "no meaningful signal found." Fetch is resolved through
+searches X for real complaints/requests around that problem, then reports back a top-line
+**Verdict** — one executive-summary paragraph on whether this is a real, validated problem,
+concentrated or fragmented, whether any existing competitor already targets it, and an honest
+pursue/pass read — printed above the supporting signal strength and 2-4 recurring themes, or an
+explicit "no meaningful signal found" when nothing relevant survives. Fetch is resolved through
 the same `FETCH_PROVIDER` abstraction as every other command (defaults to TwitterAPIs.com; set
 `FETCH_PROVIDER=twitterapi_io` to use TwitterAPI.io instead), not hardcoded to one provider. It
 opens no database session, writes no `Digest`/`Theme`/`SourcePost`/`DraftPost` row, and has no
