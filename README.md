@@ -428,6 +428,24 @@ whole state machine — `published_manual_override` — for a human to direct a 
 call on a held draft in the moment; it's a one-off, hand-confirmed action with no CLI command that
 reaches it automatically, never a routine path.
 
+#### Idea Validation Mode (separate, non-scheduled, non-persisted)
+
+Everything above this point is the brand/topic-tracking pipeline. Idea Validation mode
+(`idea-validate run`, `specs/002-idea-validation-mode/`) is a deliberately separate, one-off mode
+built for a different question: not "is this *existing* topic spiking," but "does real demand for
+this problem/idea exist at all." It reuses Fetch's pagination/retry mechanics — including the same
+`FETCH_PROVIDER` provider abstraction ([`src/pipeline/fetch_provider.py`](src/pipeline/fetch_provider.py))
+every other command resolves through, defaulting to TwitterAPIs.com, not hardcoded to either
+provider — Filter's bot/noise scoring, and Cluster's embedding-similarity grouping unchanged, but
+swaps in a phrase-list query (instead of one topic entity), a deterministic post-fetch relevance
+filter (exclude-terms, catching what the query-level `-"term"` exclusion misses), absolute
+volume/recency in place of a baseline-relative spike ratio (a new problem space has no history to
+compare against), and a new "what people want/are frustrated by" Summarize-prompt variant instead
+of "why is this trending." It opens no database session and writes no
+`Digest`/`Theme`/`SourcePost`/`DraftPost`/`PostingMode` row — output is a printed (and optionally
+file-written) validation readout, not a persisted digest. Full command reference:
+[`docs/cli-usage.md#idea-validate-002-idea-validation-mode`](docs/cli-usage.md#idea-validate-002-idea-validation-mode).
+
 ## Database Schema
 
 SQLite by default (see [Built With](#built-with)), one file per deployment, every table scoped by
@@ -688,11 +706,30 @@ python -m src.cli.eval report --stage digest         # SC-011 KPI
 
 # Scheduler (long-lived process — runs scheduled digests + retention sweep for every user)
 python -m src.cli.scheduler run
+
+# Idea Validation mode (separate, non-scheduled, non-persisted — see below)
+python -m src.cli.idea_validate run \
+  --phrase "can't find sublet" \
+  --phrase "no easy way to sublet" \
+  --phrase "sublet is a nightmare" \
+  --exclude-term "sublet.com"
 ```
 
 `digest run` above is on-demand and one-shot. To get the automatic, scheduled digest cadence plus
 the periodic retention sweep running in the background, start the scheduler as its own long-lived
 process — see [`docs/cli-usage.md#scheduler`](docs/cli-usage.md#scheduler) for cadence flags.
+
+**Idea Validation mode** (`idea-validate run`) is a separate mode from everything else on this
+page: instead of tracking a brand/topic that already exists, give it a short list of
+problem-describing phrases (e.g. "people struggling to find sublets in a new city") and it
+searches X for real complaints/requests around that problem, then reports back signal strength
+and 2-4 recurring themes — or an explicit "no meaningful signal found." Fetch is resolved through
+the same `FETCH_PROVIDER` abstraction as every other command (defaults to TwitterAPIs.com; set
+`FETCH_PROVIDER=twitterapi_io` to use TwitterAPI.io instead), not hardcoded to one provider. It
+opens no database session, writes no `Digest`/`Theme`/`SourcePost`/`DraftPost` row, and has no
+posting step — output is stdout plus an optional `--out <path>` file, a one-time strategic input
+rather than a scheduled digest. Full reference:
+[`docs/cli-usage.md#idea-validate-002-idea-validation-mode`](docs/cli-usage.md#idea-validate-002-idea-validation-mode).
 
 By default, `digest show` hides any Theme scoring below `confidence_score` 20 as noise below the
 Summarize prompt's calibrated signal floor; `--full` un-hides those low-confidence themes in
