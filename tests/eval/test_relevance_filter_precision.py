@@ -80,9 +80,12 @@ def test_relevance_filter_precision_meets_target_on_hand_labeled_fixture():
     precision = relevant_kept / len(kept)
 
     n = len(_FIXTURE)
-    print(f"\nRelevance Filter precision: {precision:.2%} (relevant_kept={relevant_kept}, "
-          f"kept={len(kept)}, n={n})")
+    print(
+        f"\nRelevance Filter precision: {precision:.2%} (relevant_kept={relevant_kept}, "
+        f"kept={len(kept)}, n={n})"
+    )
 
-    assert precision >= PRECISION_TARGET, (
+    failure_message = (
         f"precision {precision:.2%} (n={n}) fell below the {PRECISION_TARGET:.0%} target"
     )
+    assert precision >= PRECISION_TARGET, failure_message

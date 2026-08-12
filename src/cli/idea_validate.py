@@ -186,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if not args.phrases:
             raise IdeaValidateCommandError(
-                "At least one --phrase is required (e.g. --phrase \"can't find sublet\")."
+                'At least one --phrase is required (e.g. --phrase "can\'t find sublet").'
             )
 
         until = _parse_iso8601(args.until) if args.until else datetime.now(UTC)

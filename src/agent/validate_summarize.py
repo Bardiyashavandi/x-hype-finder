@@ -139,9 +139,7 @@ class ValidateSummarizeError(RuntimeError):
 # Same two production-observed leak variants summarize.py's
 # _LEAKED_PARAMETER_PATTERN guards against, adapted to this schema's last
 # field (recurrence_signal instead of confidence_score).
-_LEAKED_PARAMETER_PATTERN = re.compile(
-    r'</\w+>\s*<parameter name="recurrence_signal">\s*(\w+)\s*$'
-)
+_LEAKED_PARAMETER_PATTERN = re.compile(r'</\w+>\s*<parameter name="recurrence_signal">\s*(\w+)\s*$')
 
 
 def _recover_leaked_recurrence_signal(tool_input: dict) -> dict:
