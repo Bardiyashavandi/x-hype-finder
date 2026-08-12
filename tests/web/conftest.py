@@ -15,16 +15,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.models.user import User
+from src.utils.password import hash_password
 from src.web.app import create_app
 from src.web.deps import get_db, get_session_factory
 
-WEB_PASSWORD = "test-dashboard-password"
+# The password every `seed_user`-backed `User` row is given (User Story 5 /
+# FR-015: real per-user login, specs/003-web-dashboard) — `authed_client`
+# logs in with this against that same seeded account.
+TEST_USER_PASSWORD = "correct-horse-battery-staple"
 WEB_SESSION_SECRET = "test-dashboard-session-secret"
 
 
 @pytest.fixture()
 def app(db_session, monkeypatch):
-    monkeypatch.setenv("XHF_WEB_PASSWORD", WEB_PASSWORD)
     monkeypatch.setenv("XHF_WEB_SESSION_SECRET", WEB_SESSION_SECRET)
     application = create_app()
 
@@ -54,21 +57,28 @@ def client(app):
 
 
 @pytest.fixture()
-def authed_client(client):
-    """A `client` that has already completed the single-shared-password
-    login flow — its session cookie is authenticated for every subsequent
-    request (TestClient persists cookies across calls)."""
-    response = client.post("/api/auth/login", json={"password": WEB_PASSWORD})
-    assert response.status_code == 200
-    return client
-
-
-@pytest.fixture()
 def seed_user(db_session) -> User:
-    """Every protected endpoint's `get_current_user` needs exactly one
-    `User` row to auto-resolve (src/cli/_common.py's `resolve_current_user`)
-    — the same single-user convention every other test suite seeds."""
-    user = User(email="pilot@example.com", x_account_handle="pilot", created_at=datetime.now(UTC))
+    """The one `User` most tests act as — a real dashboard account (a
+    bcrypt hash of `TEST_USER_PASSWORD`), the same account `authed_client`
+    logs in as."""
+    user = User(
+        email="pilot@example.com",
+        x_account_handle="pilot",
+        password_hash=hash_password(TEST_USER_PASSWORD),
+        created_at=datetime.now(UTC),
+    )
     db_session.add(user)
     db_session.flush()
     return user
+
+
+@pytest.fixture()
+def authed_client(client, seed_user):
+    """A `client` that has already logged in as `seed_user` — its session
+    cookie carries that user's real id for every subsequent request
+    (TestClient persists cookies across calls)."""
+    response = client.post(
+        "/api/auth/login", json={"email": seed_user.email, "password": TEST_USER_PASSWORD}
+    )
+    assert response.status_code == 200
+    return client

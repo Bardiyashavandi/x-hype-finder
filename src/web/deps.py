@@ -1,4 +1,4 @@
-"""FastAPI dependencies shared by every router (specs/003-web-dashboard/plan.md §1).
+"""FastAPI dependencies shared by every router (specs/003-web-dashboard).
 
 Two DB-access dependencies, deliberately different lifecycles:
 
@@ -15,25 +15,27 @@ Two DB-access dependencies, deliberately different lifecycles:
 Both are overridden in tests to reuse the shared in-memory `db_session`
 fixture (tests/web/conftest.py) rather than hitting a real sqlite file.
 
-`get_current_user` resolves the acting user via the exact same
-`resolve_current_user()` every CLI command uses (plan.md §1 "Which 'current
-user'?") — single-user auto-resolve, or `XHF_USER_EMAIL` if ambiguous —
-called fresh per request against that request's own session, never cached.
-It depends on `require_auth`, so any router using `Depends(get_current_user)`
-gets the 401 auth gate for free.
+`get_current_user` resolves the acting user directly from the session's
+stored `user_id` (User Story 5 / FR-015: real per-user login,
+specs/003-web-dashboard) — it deliberately does NOT call the CLI's
+`resolve_current_user()` (src/cli/_common.py), whose single-user
+auto-resolve/`XHF_USER_EMAIL` logic assumes exactly one operator-run process
+and doesn't fit a real multi-user browser login: two people logged in at
+once, from two different sessions, must each resolve to *their own* row,
+not whichever row `resolve_current_user` happens to auto-pick.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Generator
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from src.cli._common import NoCurrentUserError, resolve_current_user
 from src.db.session import get_session
 from src.models.user import User
-from src.web.auth import SESSION_AUTH_KEY
+from src.web.auth import SESSION_USER_ID_KEY
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -48,21 +50,23 @@ def get_session_factory() -> Callable[[], Session]:
     return get_session
 
 
-def require_auth(request: Request) -> None:
-    """401 unless this request's session cookie was set by a successful
-    `POST /api/auth/login` — every router but auth depends on this (directly
-    or via `get_current_user`)."""
-    if not request.session.get(SESSION_AUTH_KEY):
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """The `User` this request is logged in as, read straight from the
+    session (`SESSION_USER_ID_KEY`) and looked up fresh every request —
+    401 if the session carries no user id, an unparseable one, or one that
+    no longer resolves to a real row (e.g. the account was deleted after
+    the cookie was issued — self-heals rather than trusting a stale
+    session forever)."""
+    raw_user_id = request.session.get(SESSION_USER_ID_KEY)
+    if raw_user_id is None:
         raise HTTPException(status_code=401, detail="Not authenticated.")
 
-
-def get_current_user(
-    db: Session = Depends(get_db),
-    _auth: None = Depends(require_auth),
-) -> User:
     try:
-        return resolve_current_user(db)
-    except NoCurrentUserError as exc:
-        # A misconfigured/empty deployment, not a client error — surface it
-        # as a 500 rather than a misleading 401/404.
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        user_id = uuid.UUID(raw_user_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=401, detail="Not authenticated.") from None
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    return user

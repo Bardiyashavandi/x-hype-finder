@@ -28,8 +28,8 @@ DEFAULT_PORT = 8000
 
 def run_web(*, host: str, port: int) -> int:
     # Same "load .env into os.environ, then read from there" convention as
-    # src/config.py's load_config — XHF_WEB_PASSWORD/XHF_WEB_SESSION_SECRET
-    # are read by src.web.app.create_app() the same way.
+    # src/config.py's load_config — XHF_WEB_SESSION_SECRET is read by
+    # src.web.app.create_app() the same way.
     load_dotenv()
 
     print(f"Web dashboard running on http://{host}:{port} — Ctrl+C to stop.")

@@ -814,21 +814,31 @@ same business logic the CLI drives — topics, digests (on-demand runs watched l
 background-job polling), manually-held drafts (a real "type to confirm" modal before marking one
 published — never a silent one-click), Idea Validation Mode, and the eval report. Every endpoint
 is a thin wrapper over the same functions [`docs/cli-usage.md`](docs/cli-usage.md) documents —
-not a reimplementation of any pipeline logic, and not a read-only viewer. Auth is a single shared
-password, appropriate for this project's single-operator, self-hosted scale rather than a
-multi-tenant login system — see [`specs/003-web-dashboard/plan.md`](specs/003-web-dashboard/plan.md)
+not a reimplementation of any pipeline logic, and not a read-only viewer. Auth is real per-user
+accounts (email + bcrypt-hashed password, User Story 5 / FR-015) — the underlying data model has
+always been multi-tenant, this just gives the login a real identity to match, rather than a
+shared password standing in for it. There's still no public signup: accounts are provisioned by
+the operator via the CLI. See [`specs/003-web-dashboard/plan.md`](specs/003-web-dashboard/plan.md)
 for the full design.
 
 ### Setup
 
-1. Add two dashboard-only variables to `.env` (see `.env.example`):
+1. Add the dashboard's one required variable to `.env` (see `.env.example`):
 
    ```sh
-   XHF_WEB_PASSWORD=<a password you choose>
    XHF_WEB_SESSION_SECRET=<a long random string>
    ```
 
-2. Build the frontend once (re-run after pulling frontend changes):
+2. Create an account for yourself (and, optionally, one collaborator) — prompts for a password,
+   hidden input, never passed as a CLI argument or logged:
+
+   ```sh
+   python -m src.cli.user create you@example.com --handle your_x_handle
+   ```
+
+   Re-run without `--handle` any time you just want to change that account's password.
+
+3. Build the frontend once (re-run after pulling frontend changes):
 
    ```sh
    cd web
@@ -837,14 +847,14 @@ for the full design.
    cd ..
    ```
 
-3. Start the dashboard — one process serves both the API and the built frontend:
+4. Start the dashboard — one process serves both the API and the built frontend:
 
    ```sh
    python -m src.cli.web run                        # http://127.0.0.1:8000 by default
    python -m src.cli.web run --host 0.0.0.0 --port 8080
    ```
 
-4. Open it in a browser and sign in with `XHF_WEB_PASSWORD`.
+5. Open it in a browser and sign in with the email/password you created in step 2.
 
 Always runs single-worker (not configurable): the background-job registry backing on-demand
 digest runs and Idea Validation runs (`src/web/jobs.py`) is an in-process dict, so a second worker

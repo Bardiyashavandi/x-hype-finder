@@ -6,9 +6,8 @@ router, and — once `web/dist` exists (`npm run build`) — the compiled SPA,
 so one `uvicorn` process serves both (plan.md §2 "Production serving"). It's
 a factory rather than a bare module-level `app` so tests can build a fresh
 instance per test (with dependency overrides) without needing
-`XHF_WEB_PASSWORD`/`XHF_WEB_SESSION_SECRET` set merely to *import* this
-module. `src/cli/web.py` is the `web run` entry point that actually serves
-this in production.
+`XHF_WEB_SESSION_SECRET` set merely to *import* this module. `src/cli/web.py`
+is the `web run` entry point that actually serves this in production.
 """
 
 from __future__ import annotations

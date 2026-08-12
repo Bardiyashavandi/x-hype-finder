@@ -4,6 +4,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStatus, useLogin } from '../hooks/useAuth'
 
 export function LoginPage() {
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const navigate = useNavigate()
   const location = useLocation()
@@ -19,9 +20,10 @@ export function LoginPage() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
-    login.mutate(password, {
-      onSuccess: () => navigate('/topics', { replace: true }),
-    })
+    login.mutate(
+      { email, password },
+      { onSuccess: () => navigate('/topics', { replace: true }) },
+    )
   }
 
   return (
@@ -31,7 +33,19 @@ export function LoginPage() {
         className="w-full max-w-sm rounded-lg border border-surface-border bg-surface-raised p-8"
       >
         <h1 className="mb-1 text-lg font-semibold text-gray-100">X Hype Finder</h1>
-        <p className="mb-6 text-sm text-gray-400">Sign in with the dashboard password.</p>
+        <p className="mb-6 text-sm text-gray-400">Sign in to your account.</p>
+
+        <label htmlFor="email" className="mb-1 block text-sm text-gray-300">
+          Email
+        </label>
+        <input
+          id="email"
+          type="email"
+          autoFocus
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className="mb-4 w-full rounded-md border border-surface-border bg-surface px-3 py-2 text-sm text-gray-100 outline-none focus:border-pipeline"
+        />
 
         <label htmlFor="password" className="mb-1 block text-sm text-gray-300">
           Password
@@ -39,7 +53,6 @@ export function LoginPage() {
         <input
           id="password"
           type="password"
-          autoFocus
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="mb-4 w-full rounded-md border border-surface-border bg-surface px-3 py-2 text-sm text-gray-100 outline-none focus:border-pipeline"
@@ -53,7 +66,7 @@ export function LoginPage() {
 
         <button
           type="submit"
-          disabled={login.isPending || password.length === 0}
+          disabled={login.isPending || email.length === 0 || password.length === 0}
           className="w-full rounded-md bg-pipeline px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {login.isPending ? 'Signing in…' : 'Sign in'}
